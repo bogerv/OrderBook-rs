@@ -15,10 +15,13 @@ mod tests {
 
     #[test]
     fn test_with_trade_listener_constructor() {
-        // Test the with_trade_listener constructor (lines 233-247)
-        fn dummy_listener(_match_result: &pricelevel::MatchResult) {
+        // Test the with_trade_listener constructor with new Arc-based TradeListener
+        use orderbook_rs::TradeResult;
+        use std::sync::Arc;
+
+        let dummy_listener = Arc::new(|_trade_result: &TradeResult| {
             // Empty listener for testing
-        }
+        });
         let book = OrderBook::<()>::with_trade_listener("TEST", dummy_listener);
 
         assert_eq!(book.symbol(), "TEST");
@@ -528,5 +531,77 @@ mod tests {
 
         let orders = book.get_all_orders();
         assert!(orders.is_empty());
+    }
+
+    #[test]
+    fn test_trade_listener_with_symbol_information() {
+        // Test that TradeListener receives correct symbol information
+        use orderbook_rs::{TradeListener, TradeResult};
+        use std::sync::{Arc, Mutex};
+
+        let captured_trades = Arc::new(Mutex::new(Vec::<TradeResult>::new()));
+        let captured_trades_clone = captured_trades.clone();
+
+        let trade_listener: TradeListener = Arc::new(move |trade_result: &TradeResult| {
+            let mut trades = captured_trades_clone.lock().unwrap();
+            trades.push(trade_result.clone());
+        });
+
+        let book = OrderBook::<()>::with_trade_listener("BTC/USD", trade_listener);
+
+        // Add liquidity
+        let ask_id = OrderId::from_u64(1);
+        let _ = book.add_limit_order(ask_id, 50000, 100, Side::Sell, TimeInForce::Gtc, None);
+
+        // Execute a trade
+        let buy_id = OrderId::from_u64(2);
+        let _ = book.add_limit_order(buy_id, 50000, 50, Side::Buy, TimeInForce::Gtc, None);
+
+        // Verify the trade listener was called with correct symbol
+        let trades = captured_trades.lock().unwrap();
+        assert!(!trades.is_empty(), "Trade listener should have been called");
+
+        let trade = &trades[0];
+        assert_eq!(
+            trade.symbol, "BTC/USD",
+            "Symbol should match the order book symbol"
+        );
+        assert!(
+            !trade.match_result.transactions.transactions.is_empty(),
+            "Should have transactions"
+        );
+        assert_eq!(
+            trade.match_result.executed_quantity(),
+            50,
+            "Should have executed 50 units"
+        );
+    }
+
+    #[test]
+    fn test_set_and_remove_trade_listener() {
+        // Test setting and removing trade listeners
+        use orderbook_rs::{TradeListener, TradeResult};
+        use std::sync::{Arc, Mutex};
+
+        let mut book = OrderBook::<()>::new("ETH/USD");
+
+        // Initially no listener
+        assert!(book.trade_listener.is_none());
+
+        let captured_trades = Arc::new(Mutex::new(Vec::<TradeResult>::new()));
+        let captured_trades_clone = captured_trades.clone();
+
+        let trade_listener: TradeListener = Arc::new(move |trade_result: &TradeResult| {
+            let mut trades = captured_trades_clone.lock().unwrap();
+            trades.push(trade_result.clone());
+        });
+
+        // Set listener
+        book.set_trade_listener(trade_listener);
+        assert!(book.trade_listener.is_some());
+
+        // Remove listener
+        book.remove_trade_listener();
+        assert!(book.trade_listener.is_none());
     }
 }

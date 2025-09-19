@@ -13,6 +13,6 @@ mod private;
 pub mod snapshot;
 mod tests;
 
-pub use book::OrderBook;
+pub use book::{OrderBook, TradeListener, TradeResult};
 pub use error::OrderBookError;
 pub use snapshot::OrderBookSnapshot;
