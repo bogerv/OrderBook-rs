@@ -46,7 +46,7 @@ This order book engine is built with the following design principles:
 - **Research**: Platform for studying market microstructure and order flow
 - **Educational**: Reference implementation for understanding modern exchange architecture
 
-### What's New in Version 0.3.0
+### What's New in Version 0.3.2
 
 This version introduces significant performance optimizations and architectural improvements:
 

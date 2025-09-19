@@ -56,8 +56,27 @@ pub struct OrderBook<T = ()> {
     _phantom: PhantomData<T>,
 }
 
-/// trade listener specification
-pub type TradeListener = fn(&MatchResult);
+/// Enhanced trade result that includes symbol information
+#[derive(Debug, Clone)]
+pub struct TradeResult {
+    /// The symbol this trade result belongs to
+    pub symbol: String,
+    /// The underlying match result from the pricelevel crate
+    pub match_result: MatchResult,
+}
+
+impl TradeResult {
+    /// Create a new TradeResult
+    pub fn new(symbol: String, match_result: MatchResult) -> Self {
+        Self {
+            symbol,
+            match_result,
+        }
+    }
+}
+
+/// Trade listener specification using Arc for shared ownership
+pub type TradeListener = Arc<dyn Fn(&TradeResult) + Send + Sync>;
 
 impl<T> OrderBook<T>
 where
@@ -229,7 +248,7 @@ where
         }
     }
 
-    /// Create a new order book for the given symbol with a trade listner
+    /// Create a new order book for the given symbol with a trade listener
     pub fn with_trade_listener(symbol: &str, trade_listener: TradeListener) -> Self {
         let namespace = Uuid::new_v4();
 
@@ -247,6 +266,16 @@ where
             trade_listener: Some(trade_listener),
             _phantom: PhantomData,
         }
+    }
+
+    /// Set a trade listener for this order book
+    pub fn set_trade_listener(&mut self, trade_listener: TradeListener) {
+        self.trade_listener = Some(trade_listener);
+    }
+
+    /// Remove the trade listener from this order book
+    pub fn remove_trade_listener(&mut self) {
+        self.trade_listener = None;
     }
 
     /// Get the symbol of this order book

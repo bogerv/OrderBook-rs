@@ -32,7 +32,7 @@
 //! - **Research**: Platform for studying market microstructure and order flow
 //! - **Educational**: Reference implementation for understanding modern exchange architecture
 //!
-//! ## What's New in Version 0.3.0
+//! ## What's New in Version 0.3.2
 //!
 //! This version introduces significant performance optimizations and architectural improvements:
 //!
@@ -155,7 +155,7 @@ pub mod orderbook;
 
 mod utils;
 
-pub use orderbook::{OrderBook, OrderBookError, OrderBookSnapshot};
+pub use orderbook::{OrderBook, OrderBookError, OrderBookSnapshot, TradeListener, TradeResult};
 pub use utils::current_time_millis;
 
 /// Legacy type alias for `OrderBook<()>` to maintain backward compatibility.
