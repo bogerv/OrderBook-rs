@@ -5,3 +5,4 @@ mod modifications_coverage_tests;
 mod operations_coverage_tests;
 mod operations_coverage_tests_extended;
 mod private_coverage_tests;
+mod snapshot_restore_tests;
