@@ -2,7 +2,7 @@
 
 use super::cache::PriceLevelCache;
 use super::error::OrderBookError;
-use super::snapshot::OrderBookSnapshot;
+use super::snapshot::{OrderBookSnapshot, OrderBookSnapshotPackage};
 use crate::utils::current_time_millis;
 use dashmap::DashMap;
 use pricelevel::{MatchResult, OrderId, OrderType, PriceLevel, Side, UuidGenerator};
@@ -536,6 +536,88 @@ where
             bids: bid_levels,
             asks: ask_levels,
         }
+    }
+
+    /// Create a checksum-protected snapshot package of the entire book.
+    pub fn create_snapshot_package(
+        &self,
+        depth: usize,
+    ) -> Result<OrderBookSnapshotPackage, OrderBookError> {
+        let snapshot = self.create_snapshot(depth);
+        OrderBookSnapshotPackage::new(snapshot)
+    }
+
+    /// Serialize a checksum-protected snapshot package to JSON.
+    pub fn snapshot_to_json(&self, depth: usize) -> Result<String, OrderBookError> {
+        self.create_snapshot_package(depth)?.to_json()
+    }
+
+    /// Restore the book state from a checksum-validated snapshot package.
+    pub fn restore_from_snapshot_package(
+        &self,
+        package: OrderBookSnapshotPackage,
+    ) -> Result<(), OrderBookError> {
+        self.restore_from_snapshot(package.into_snapshot()?)
+    }
+
+    /// Restore the book state from a JSON payload containing a checksum-protected snapshot package.
+    pub fn restore_from_snapshot_json(&self, data: &str) -> Result<(), OrderBookError> {
+        let package = OrderBookSnapshotPackage::from_json(data)?;
+        self.restore_from_snapshot_package(package)
+    }
+
+    /// Restore the book state from a snapshot, without checksum validation.
+    pub fn restore_from_snapshot(&self, snapshot: OrderBookSnapshot) -> Result<(), OrderBookError> {
+        if snapshot.symbol != self.symbol {
+            return Err(OrderBookError::InvalidOperation {
+                message: format!(
+                    "Snapshot symbol {} does not match order book symbol {}",
+                    snapshot.symbol, self.symbol
+                ),
+            });
+        }
+
+        self.cache.invalidate();
+        self.bids.clear();
+        self.asks.clear();
+        self.order_locations.clear();
+        self.has_traded.store(false, Ordering::Relaxed);
+        self.last_trade_price.store(0, Ordering::Relaxed);
+        self.has_market_close.store(false, Ordering::Relaxed);
+        self.market_close_timestamp.store(0, Ordering::Relaxed);
+
+        for level_snapshot in snapshot.bids {
+            let price = level_snapshot.price;
+            let price_level: PriceLevel = PriceLevel::from(&level_snapshot);
+            let arc_level = Arc::new(price_level);
+            self.bids.insert(price, arc_level);
+        }
+
+        for level_snapshot in snapshot.asks {
+            let price = level_snapshot.price;
+            let price_level: PriceLevel = PriceLevel::from(&level_snapshot);
+            let arc_level = Arc::new(price_level);
+            self.asks.insert(price, arc_level);
+        }
+
+        // Rebuild order location map with generic order types
+        for item in self.bids.iter() {
+            let price = *item.key();
+            let level = item.value();
+            for order in level.iter_orders() {
+                self.order_locations.insert(order.id(), (price, Side::Buy));
+            }
+        }
+
+        for item in self.asks.iter() {
+            let price = *item.key();
+            let level = item.value();
+            for order in level.iter_orders() {
+                self.order_locations.insert(order.id(), (price, Side::Sell));
+            }
+        }
+
+        Ok(())
     }
 
     /// Get the total volume at each price level

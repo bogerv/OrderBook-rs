@@ -2,7 +2,10 @@
 
 use pricelevel::PriceLevelSnapshot;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tracing::trace;
+
+use super::error::OrderBookError;
 
 /// A snapshot of the order book state at a specific point in time
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -21,6 +24,17 @@ pub struct OrderBookSnapshot {
 }
 
 impl OrderBookSnapshot {
+    /// Recomputes aggregate values for all included price levels.
+    pub fn refresh_aggregates(&mut self) {
+        for level in &mut self.bids {
+            level.refresh_aggregates();
+        }
+
+        for level in &mut self.asks {
+            level.refresh_aggregates();
+        }
+    }
+
     /// Get the best bid price and quantity
     pub fn best_bid(&self) -> Option<(u64, u64)> {
         let bids = self
@@ -101,5 +115,89 @@ impl OrderBookSnapshot {
             .sum();
         trace!("total_ask_value: {:?}", value);
         value
+    }
+}
+
+/// Format version used for checksum-enabled order book snapshots.
+pub const ORDERBOOK_SNAPSHOT_FORMAT_VERSION: u32 = 1;
+
+/// Wrapper that provides checksum validation for `OrderBookSnapshot` instances.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderBookSnapshotPackage {
+    /// Version of the snapshot schema for forward compatibility.
+    pub version: u32,
+    /// Snapshot payload.
+    pub snapshot: OrderBookSnapshot,
+    /// Hex-encoded checksum of the serialized snapshot.
+    pub checksum: String,
+}
+
+impl OrderBookSnapshotPackage {
+    /// Creates a new snapshot package computing the checksum of the snapshot contents.
+    pub fn new(mut snapshot: OrderBookSnapshot) -> Result<Self, OrderBookError> {
+        snapshot.refresh_aggregates();
+
+        let checksum = Self::compute_checksum(&snapshot)?;
+
+        Ok(Self {
+            version: ORDERBOOK_SNAPSHOT_FORMAT_VERSION,
+            snapshot,
+            checksum,
+        })
+    }
+
+    /// Serializes the package to JSON.
+    pub fn to_json(&self) -> Result<String, OrderBookError> {
+        serde_json::to_string(self).map_err(|error| OrderBookError::SerializationError {
+            message: error.to_string(),
+        })
+    }
+
+    /// Deserializes the package from JSON.
+    pub fn from_json(data: &str) -> Result<Self, OrderBookError> {
+        serde_json::from_str(data).map_err(|error| OrderBookError::DeserializationError {
+            message: error.to_string(),
+        })
+    }
+
+    /// Validates the checksum and version.
+    pub fn validate(&self) -> Result<(), OrderBookError> {
+        if self.version != ORDERBOOK_SNAPSHOT_FORMAT_VERSION {
+            return Err(OrderBookError::InvalidOperation {
+                message: format!(
+                    "Unsupported snapshot version: {} (expected {})",
+                    self.version, ORDERBOOK_SNAPSHOT_FORMAT_VERSION
+                ),
+            });
+        }
+
+        let computed = Self::compute_checksum(&self.snapshot)?;
+        if computed != self.checksum {
+            return Err(OrderBookError::ChecksumMismatch {
+                expected: self.checksum.clone(),
+                actual: computed,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Consumes the package and returns the validated snapshot.
+    pub fn into_snapshot(self) -> Result<OrderBookSnapshot, OrderBookError> {
+        self.validate()?;
+        Ok(self.snapshot)
+    }
+
+    fn compute_checksum(snapshot: &OrderBookSnapshot) -> Result<String, OrderBookError> {
+        let payload =
+            serde_json::to_vec(snapshot).map_err(|error| OrderBookError::SerializationError {
+                message: error.to_string(),
+            })?;
+
+        let mut hasher = Sha256::new();
+        hasher.update(payload);
+
+        let checksum_bytes = hasher.finalize();
+        Ok(format!("{:x}", checksum_bytes))
     }
 }

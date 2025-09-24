@@ -15,4 +15,6 @@ mod tests;
 
 pub use book::{OrderBook, TradeListener, TradeResult};
 pub use error::OrderBookError;
-pub use snapshot::OrderBookSnapshot;
+pub use snapshot::{
+    ORDERBOOK_SNAPSHOT_FORMAT_VERSION, OrderBookSnapshot, OrderBookSnapshotPackage,
+};
