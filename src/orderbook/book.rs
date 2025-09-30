@@ -6,6 +6,7 @@ use super::snapshot::{OrderBookSnapshot, OrderBookSnapshotPackage};
 use crate::utils::current_time_millis;
 use dashmap::DashMap;
 use pricelevel::{MatchResult, OrderId, OrderType, PriceLevel, Side, UuidGenerator};
+use serde::Serialize;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -77,6 +78,71 @@ impl TradeResult {
 
 /// Trade listener specification using Arc for shared ownership
 pub type TradeListener = Arc<dyn Fn(&TradeResult) + Send + Sync>;
+
+impl<T> Serialize for OrderBook<T>
+where
+    T: Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        use std::collections::HashMap;
+        use std::sync::atomic::Ordering;
+
+        let mut state = serializer.serialize_struct("OrderBook", 9)?;
+
+        // Serialize symbol
+        state.serialize_field("symbol", &self.symbol)?;
+
+        // Serialize bids as HashMap<u64, PriceLevel> using snapshots
+        let bids: HashMap<u64, _> = self
+            .bids
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().snapshot()))
+            .collect();
+        state.serialize_field("bids", &bids)?;
+
+        // Serialize asks as HashMap<u64, PriceLevel> using snapshots
+        let asks: HashMap<u64, _> = self
+            .asks
+            .iter()
+            .map(|entry| (*entry.key(), entry.value().snapshot()))
+            .collect();
+        state.serialize_field("asks", &asks)?;
+
+        // Serialize order_locations as HashMap
+        let order_locations: HashMap<OrderId, (u64, Side)> = self
+            .order_locations
+            .iter()
+            .map(|entry| (*entry.key(), *entry.value()))
+            .collect();
+        state.serialize_field("order_locations", &order_locations)?;
+
+        // Serialize atomic values by loading them
+        state.serialize_field(
+            "last_trade_price",
+            &self.last_trade_price.load(Ordering::Relaxed),
+        )?;
+        state.serialize_field("has_traded", &self.has_traded.load(Ordering::Relaxed))?;
+        state.serialize_field(
+            "market_close_timestamp",
+            &self.market_close_timestamp.load(Ordering::Relaxed),
+        )?;
+        state.serialize_field(
+            "has_market_close",
+            &self.has_market_close.load(Ordering::Relaxed),
+        )?;
+
+        // Serialize cache
+        state.serialize_field("cache", &self.cache)?;
+
+        // Skip trade_listener (cannot be serialized) and transaction_id_generator, _phantom
+
+        state.end()
+    }
+}
 
 impl<T> OrderBook<T>
 where

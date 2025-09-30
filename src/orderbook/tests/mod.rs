@@ -4,6 +4,7 @@ mod matching;
 mod modifications;
 mod operations;
 mod order;
+mod serialize_tests;
 mod snapshot;
 mod time_in_force;
 mod uuid;
