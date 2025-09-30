@@ -32,7 +32,7 @@
 //! - **Research**: Platform for studying market microstructure and order flow
 //! - **Educational**: Reference implementation for understanding modern exchange architecture
 //!
-//! ## What's New in Version 0.4.0
+//! ## What's New in Version 0.4.1
 //!
 //! This version introduces significant performance optimizations and architectural improvements:
 //!
