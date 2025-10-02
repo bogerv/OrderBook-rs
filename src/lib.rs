@@ -156,7 +156,7 @@ pub mod orderbook;
 pub mod prelude;
 mod utils;
 
-pub use orderbook::manager::BookManager;
+pub use orderbook::manager::{BookManager, BookManagerStd, BookManagerTokio};
 pub use orderbook::trade::{TradeListener, TradeResult};
 pub use orderbook::{OrderBook, OrderBookError, OrderBookSnapshot};
 pub use utils::current_time_millis;

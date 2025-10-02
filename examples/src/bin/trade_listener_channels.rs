@@ -6,7 +6,7 @@
 //! 3. Use BookManager to handle trades from multiple symbols
 //! 4. Demonstrate real-world patterns for trading systems
 
-use orderbook_rs::prelude::{BookManager, OrderId, Side, TimeInForce};
+use orderbook_rs::prelude::{BookManager, BookManagerStd, OrderId, Side, TimeInForce};
 use std::thread;
 use std::time::Duration;
 use tracing::{info, warn};
@@ -85,8 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting TradeListener channels example");
 
-    // Create a BookManager with unit type (no extra data)
-    let mut manager = BookManager::<()>::new();
+    // Create a BookManagerStd with unit type (no extra data)
+    let mut manager = BookManagerStd::<()>::new();
 
     // Add multiple order books
     let symbols = vec!["BTC/USD", "ETH/USD", "SOL/USD"];
@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn test_book_manager_with_channels() {
-        let mut manager = BookManager::<()>::new();
+        let mut manager = BookManagerStd::<()>::new();
 
         // Add a book
         manager.add_book("TEST/USD");
