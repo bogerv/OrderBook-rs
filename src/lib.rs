@@ -32,7 +32,7 @@
 //! - **Research**: Platform for studying market microstructure and order flow
 //! - **Educational**: Reference implementation for understanding modern exchange architecture
 //!
-//! ## What's New in Version 0.4.3
+//! ## What's New in Version 0.4.4
 //!
 //! This version introduces significant performance optimizations and architectural improvements:
 //!
@@ -156,7 +156,7 @@ pub mod orderbook;
 pub mod prelude;
 mod utils;
 
-pub use orderbook::manager::BookManager;
+pub use orderbook::manager::{BookManager, BookManagerStd, BookManagerTokio};
 pub use orderbook::trade::{TradeListener, TradeResult};
 pub use orderbook::{OrderBook, OrderBookError, OrderBookSnapshot};
 pub use utils::current_time_millis;
