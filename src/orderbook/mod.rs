@@ -2,6 +2,8 @@
 
 pub mod book;
 pub mod error;
+/// Multi-book management with centralized trade event routing.
+pub mod manager;
 pub mod matching;
 
 mod cache;

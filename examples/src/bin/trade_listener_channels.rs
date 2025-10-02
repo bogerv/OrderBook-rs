@@ -3,120 +3,16 @@
 //! This example shows how to:
 //! 1. Use TradeListener with channels for async communication
 //! 2. Manage multiple order books with symbol-aware trade routing
-//! 3. Implement a BookManager that handles trades from multiple symbols
+//! 3. Use BookManager to handle trades from multiple symbols
 //! 4. Demonstrate real-world patterns for trading systems
 
-use orderbook_rs::prelude::{
-    OrderBook, OrderId, Side, TimeInForce, TradeEvent, TradeListener, TradeResult,
-};
-use std::collections::HashMap;
-use std::sync::{Arc, mpsc};
+use orderbook_rs::prelude::{BookManager, OrderId, Side, TimeInForce};
 use std::thread;
 use std::time::Duration;
-use tracing::{error, info, warn};
-
-/// BookManager manages multiple order books and routes trade events
-pub struct BookManager {
-    books: HashMap<String, OrderBook<()>>,
-    trade_sender: mpsc::Sender<TradeEvent>,
-    trade_receiver: Option<mpsc::Receiver<TradeEvent>>,
-}
-
-impl BookManager {
-    /// Create a new BookManager with a trade event channel
-    pub fn new() -> Self {
-        let (sender, receiver) = mpsc::channel();
-
-        Self {
-            books: HashMap::new(),
-            trade_sender: sender,
-            trade_receiver: Some(receiver),
-        }
-    }
-
-    /// Add a new order book for a symbol with trade listener
-    pub fn add_book(&mut self, symbol: &str) {
-        let sender = self.trade_sender.clone();
-        let symbol_clone = symbol.to_string();
-
-        // Create a trade listener that sends events to our channel
-        let trade_listener: TradeListener = Arc::new(move |trade_result: &TradeResult| {
-            let trade_event = TradeEvent {
-                symbol: trade_result.symbol.clone(),
-                trade_result: trade_result.clone(),
-                timestamp: std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as u64,
-            };
-
-            if let Err(e) = sender.send(trade_event) {
-                error!("Failed to send trade event for {}: {}", symbol_clone, e);
-            }
-        });
-
-        let book = OrderBook::with_trade_listener(symbol, trade_listener);
-        self.books.insert(symbol.to_string(), book);
-        info!("Added order book for symbol: {}", symbol);
-    }
-
-    /// Get a reference to an order book by symbol
-    pub fn get_book(&self, symbol: &str) -> Option<&OrderBook<()>> {
-        self.books.get(symbol)
-    }
-
-    /// Start the trade event processor in a separate thread
-    pub fn start_trade_processor(&mut self) -> thread::JoinHandle<()> {
-        let receiver = self
-            .trade_receiver
-            .take()
-            .expect("Trade processor already started");
-
-        thread::spawn(move || {
-            info!("Trade processor started");
-
-            while let Ok(trade_event) = receiver.recv() {
-                Self::process_trade_event(trade_event);
-            }
-
-            info!("Trade processor stopped");
-        })
-    }
-
-    /// Process a single trade event (this is where you'd implement your business logic)
-    fn process_trade_event(event: TradeEvent) {
-        info!(
-            "Processing trade for {}: {} transactions, executed quantity: {}",
-            event.symbol,
-            event
-                .trade_result
-                .match_result
-                .transactions
-                .transactions
-                .len(),
-            event.trade_result.match_result.executed_quantity()
-        );
-
-        // Example processing: log trade details
-        for transaction in event.trade_result.match_result.transactions.as_vec() {
-            info!(
-                "  Transaction: {} units at price {} (ID: {})",
-                transaction.quantity, transaction.price, transaction.transaction_id
-            );
-        }
-
-        // Here you could:
-        // - Send to risk management systems
-        // - Update positions
-        // - Send market data feeds
-        // - Log to databases
-        // - Trigger alerts
-        // - Calculate P&L
-    }
-}
+use tracing::{info, warn};
 
 /// Example helper to add liquidity to an order book
-fn add_liquidity(book: &OrderBook<()>, symbol: &str) {
+fn add_liquidity(book: &orderbook_rs::OrderBook<()>, symbol: &str) {
     info!("Adding liquidity to {}", symbol);
 
     // Add some ask orders (sell side)
@@ -152,7 +48,7 @@ fn add_liquidity(book: &OrderBook<()>, symbol: &str) {
 }
 
 /// Execute some trades to demonstrate the trade listener
-fn execute_trades(book: &OrderBook<()>, symbol: &str) {
+fn execute_trades(book: &orderbook_rs::OrderBook<()>, symbol: &str) {
     info!("Executing trades on {}", symbol);
 
     // Execute a buy market order that will match against asks
@@ -189,8 +85,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Starting TradeListener channels example");
 
-    // Create a BookManager
-    let mut manager = BookManager::new();
+    // Create a BookManager with unit type (no extra data)
+    let mut manager = BookManager::<()>::new();
 
     // Add multiple order books
     let symbols = vec!["BTC/USD", "ETH/USD", "SOL/USD"];
@@ -246,11 +142,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use orderbook_rs::prelude::{OrderBook, TradeListener, TradeResult};
+    use std::sync::{Arc, mpsc};
 
     #[test]
     fn test_book_manager_with_channels() {
-        let mut manager = BookManager::new();
+        let mut manager = BookManager::<()>::new();
 
         // Add a book
         manager.add_book("TEST/USD");

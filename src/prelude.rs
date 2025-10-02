@@ -20,6 +20,7 @@
 pub use crate::orderbook::OrderBook;
 pub use crate::orderbook::OrderBookError;
 pub use crate::orderbook::OrderBookSnapshot;
+pub use crate::orderbook::manager::BookManager;
 
 // Trade-related types
 pub use crate::orderbook::trade::{
