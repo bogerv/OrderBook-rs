@@ -1,5 +1,6 @@
 use crate::orderbook::book::OrderBook;
 use crate::orderbook::error::OrderBookError;
+use crate::orderbook::trade::TradeResult;
 use pricelevel::{OrderId, OrderType, OrderUpdate, PriceLevel, Side};
 use std::sync::Arc;
 use tracing::trace;
@@ -508,8 +509,7 @@ where
         if !match_result.transactions.transactions.is_empty()
             && let Some(ref listener) = self.trade_listener
         {
-            let trade_result =
-                crate::orderbook::book::TradeResult::new(self.symbol.clone(), match_result.clone());
+            let trade_result = TradeResult::new(self.symbol.clone(), match_result.clone());
             listener(&trade_result) // emit trade events to listener
         }
 

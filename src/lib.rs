@@ -153,9 +153,11 @@
 
 pub mod orderbook;
 
+pub mod prelude;
 mod utils;
 
-pub use orderbook::{OrderBook, OrderBookError, OrderBookSnapshot, TradeListener, TradeResult};
+pub use orderbook::trade::{TradeListener, TradeResult};
+pub use orderbook::{OrderBook, OrderBookError, OrderBookSnapshot};
 pub use utils::current_time_millis;
 
 /// Legacy type alias for `OrderBook<()>` to maintain backward compatibility.
