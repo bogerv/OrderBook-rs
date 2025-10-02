@@ -3,6 +3,7 @@
 use super::cache::PriceLevelCache;
 use super::error::OrderBookError;
 use super::snapshot::{OrderBookSnapshot, OrderBookSnapshotPackage};
+use crate::orderbook::trade::{TradeListener, TradeResult};
 use crate::utils::current_time_millis;
 use dashmap::DashMap;
 use pricelevel::{MatchResult, OrderId, OrderType, PriceLevel, Side, UuidGenerator};
@@ -56,28 +57,6 @@ pub struct OrderBook<T = ()> {
     /// Phantom data to maintain generic type parameter
     _phantom: PhantomData<T>,
 }
-
-/// Enhanced trade result that includes symbol information
-#[derive(Debug, Clone)]
-pub struct TradeResult {
-    /// The symbol this trade result belongs to
-    pub symbol: String,
-    /// The underlying match result from the pricelevel crate
-    pub match_result: MatchResult,
-}
-
-impl TradeResult {
-    /// Create a new TradeResult
-    pub fn new(symbol: String, match_result: MatchResult) -> Self {
-        Self {
-            symbol,
-            match_result,
-        }
-    }
-}
-
-/// Trade listener specification using Arc for shared ownership
-pub type TradeListener = Arc<dyn Fn(&TradeResult) + Send + Sync>;
 
 impl<T> Serialize for OrderBook<T>
 where
@@ -519,7 +498,17 @@ where
             "Order book {}: Matching market order {} for {} at side {:?}",
             self.symbol, order_id, quantity, side
         );
-        OrderBook::<T>::match_order(self, order_id, side, quantity, None)
+        let match_result = OrderBook::<T>::match_order(self, order_id, side, quantity, None)?;
+
+        // Trigger trade listener if there are transactions
+        if !match_result.transactions.transactions.is_empty()
+            && let Some(ref listener) = self.trade_listener
+        {
+            let trade_result = TradeResult::new(self.symbol.clone(), match_result.clone());
+            listener(&trade_result);
+        }
+
+        Ok(match_result)
     }
 
     /// Attempts to match a limit order in the order book.
@@ -564,7 +553,18 @@ where
             "Order book {}: Matching limit order {} for {} at side {:?} with limit price {}",
             self.symbol, order_id, quantity, side, limit_price
         );
-        OrderBook::<T>::match_order(self, order_id, side, quantity, Some(limit_price))
+        let match_result =
+            OrderBook::<T>::match_order(self, order_id, side, quantity, Some(limit_price))?;
+
+        // Trigger trade listener if there are transactions
+        if !match_result.transactions.transactions.is_empty()
+            && let Some(ref listener) = self.trade_listener
+        {
+            let trade_result = TradeResult::new(self.symbol.clone(), match_result.clone());
+            listener(&trade_result);
+        }
+
+        Ok(match_result)
     }
 
     /// Create a snapshot of the current order book state

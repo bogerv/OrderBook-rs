@@ -12,8 +12,10 @@ mod pool;
 mod private;
 pub mod snapshot;
 mod tests;
+/// Trade-related types including TradeResult and TradeListener for monitoring order executions.
+pub mod trade;
 
-pub use book::{OrderBook, TradeListener, TradeResult};
+pub use book::OrderBook;
 pub use error::OrderBookError;
 pub use snapshot::{
     ORDERBOOK_SNAPSHOT_FORMAT_VERSION, OrderBookSnapshot, OrderBookSnapshotPackage,
