@@ -6,20 +6,14 @@
 //! 3. Implement a BookManager that handles trades from multiple symbols
 //! 4. Demonstrate real-world patterns for trading systems
 
-use orderbook_rs::{OrderBook, OrderId, Side, TimeInForce, TradeListener, TradeResult};
+use orderbook_rs::prelude::{
+    OrderBook, OrderId, Side, TimeInForce, TradeEvent, TradeListener, TradeResult,
+};
 use std::collections::HashMap;
 use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::Duration;
 use tracing::{error, info, warn};
-
-/// A trade event that includes additional metadata for processing
-#[derive(Debug, Clone)]
-pub struct TradeEvent {
-    pub symbol: String,
-    pub trade_result: TradeResult,
-    pub timestamp: u64,
-}
 
 /// BookManager manages multiple order books and routes trade events
 pub struct BookManager {
