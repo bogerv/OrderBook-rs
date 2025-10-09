@@ -8,7 +8,7 @@ use crate::utils::current_time_millis;
 use dashmap::DashMap;
 use pricelevel::{MatchResult, OrderId, OrderType, PriceLevel, Side, UuidGenerator};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -706,5 +706,46 @@ where
         }
 
         (bid_volumes, ask_volumes)
+    }
+
+    /// Get an Arc reference to the bids DashMap
+    pub fn get_bids(&self) -> Arc<DashMap<u64, Arc<PriceLevel>>> {
+        Arc::new(self.bids.clone())
+    }
+
+    /// Get an Arc reference to the asks DashMap
+    pub fn get_asks(&self) -> Arc<DashMap<u64, Arc<PriceLevel>>> {
+        Arc::new(self.asks.clone())
+    }
+
+    /// Get a BTreeMap of bids with price as key and PriceLevel as value
+    pub fn get_bt_bids(&self) -> BTreeMap<u64, PriceLevel> {
+        self.bids
+            .iter()
+            .map(|entry| {
+                let price = *entry.key();
+                let snapshot = entry.value().snapshot();
+                let price_level = PriceLevel::from(&snapshot);
+                (price, price_level)
+            })
+            .collect()
+    }
+
+    /// Get a BTreeMap of asks with price as key and PriceLevel as value
+    pub fn get_bt_asks(&self) -> BTreeMap<u64, PriceLevel> {
+        self.asks
+            .iter()
+            .map(|entry| {
+                let price = *entry.key();
+                let snapshot = entry.value().snapshot();
+                let price_level = PriceLevel::from(&snapshot);
+                (price, price_level)
+            })
+            .collect()
+    }
+
+    /// Get an Arc reference to the order_locations DashMap
+    pub fn get_order_locations_arc(&self) -> Arc<DashMap<OrderId, (u64, Side)>> {
+        Arc::new(self.order_locations.clone())
     }
 }
