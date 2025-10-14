@@ -414,6 +414,177 @@ where
         }
     }
 
+    /// Finds the price where cumulative depth reaches the target quantity
+    ///
+    /// # Arguments
+    /// - `target_depth`: The target cumulative quantity to reach
+    /// - `side`: The side of the order book (Buy for bids, Sell for asks)
+    ///
+    /// # Returns
+    /// The price at which the cumulative depth reaches or exceeds the target,
+    /// or `None` if the target depth cannot be reached with available liquidity.
+    ///
+    /// # Performance
+    /// O(M log N) where M is the number of levels needed to reach the target depth.
+    /// Leverages SkipMap's natural ordering for efficient iteration.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::Side;
+    ///
+    /// let orderbook = OrderBook::<()>::new("BTC/USD");
+    /// // Find where 50 units of cumulative depth is reached
+    /// if let Some(price) = orderbook.price_at_depth(50, Side::Buy) {
+    ///     println!("50 units cumulative depth reached at price: {}", price);
+    /// }
+    /// ```
+    #[must_use]
+    pub fn price_at_depth(&self, target_depth: u64, side: Side) -> Option<u64> {
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if price_levels.is_empty() {
+            return None;
+        }
+
+        let mut cumulative = 0u64;
+
+        // Iterate in price-priority order
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter().rev()), // Highest to lowest
+            Side::Sell => Box::new(price_levels.iter()),      // Lowest to highest
+        };
+
+        for entry in iter {
+            let price = *entry.key();
+            let price_level = entry.value();
+            cumulative = cumulative.saturating_add(price_level.total_quantity());
+
+            if cumulative >= target_depth {
+                return Some(price);
+            }
+        }
+
+        None
+    }
+
+    /// Returns both the price and actual cumulative depth when target is reached
+    ///
+    /// # Arguments
+    /// - `target_depth`: The target cumulative quantity to reach
+    /// - `side`: The side of the order book (Buy for bids, Sell for asks)
+    ///
+    /// # Returns
+    /// A tuple of `(price, cumulative_depth)` where the cumulative depth reaches
+    /// or exceeds the target, or `None` if the target depth cannot be reached.
+    ///
+    /// # Performance
+    /// O(M log N) where M is the number of levels needed to reach the target depth.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::Side;
+    ///
+    /// let orderbook = OrderBook::<()>::new("BTC/USD");
+    /// // Get both price and actual depth
+    /// if let Some((price, depth)) = orderbook.cumulative_depth_to_target(50, Side::Buy) {
+    ///     println!("Target depth 50 reached at {} (actual: {})", price, depth);
+    /// }
+    /// ```
+    #[must_use]
+    pub fn cumulative_depth_to_target(&self, target_depth: u64, side: Side) -> Option<(u64, u64)> {
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if price_levels.is_empty() {
+            return None;
+        }
+
+        let mut cumulative = 0u64;
+
+        // Iterate in price-priority order
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter().rev()), // Highest to lowest
+            Side::Sell => Box::new(price_levels.iter()),      // Lowest to highest
+        };
+
+        for entry in iter {
+            let price = *entry.key();
+            let price_level = entry.value();
+            cumulative = cumulative.saturating_add(price_level.total_quantity());
+
+            if cumulative >= target_depth {
+                return Some((price, cumulative));
+            }
+        }
+
+        None
+    }
+
+    /// Calculates total depth available in the first N price levels
+    ///
+    /// # Arguments
+    /// - `levels`: The number of price levels to include (from best price)
+    /// - `side`: The side of the order book (Buy for bids, Sell for asks)
+    ///
+    /// # Returns
+    /// The total cumulative quantity across the specified number of levels.
+    /// Returns 0 if the side is empty or if levels is 0.
+    ///
+    /// # Performance
+    /// O(min(levels, N) * log N) where N is the total number of price levels.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::Side;
+    ///
+    /// let orderbook = OrderBook::<()>::new("BTC/USD");
+    /// // Total depth in top 10 bid levels
+    /// let top_10_depth = orderbook.total_depth_at_levels(10, Side::Buy);
+    /// println!("Total depth in top 10 bid levels: {}", top_10_depth);
+    /// ```
+    #[must_use]
+    pub fn total_depth_at_levels(&self, levels: usize, side: Side) -> u64 {
+        if levels == 0 {
+            return 0;
+        }
+
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if price_levels.is_empty() {
+            return 0;
+        }
+
+        let mut total = 0u64;
+
+        // Iterate in price-priority order
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter().rev()), // Highest to lowest
+            Side::Sell => Box::new(price_levels.iter()),      // Lowest to highest
+        };
+
+        for (count, entry) in iter.enumerate() {
+            if count >= levels {
+                break;
+            }
+
+            let price_level = entry.value();
+            total = total.saturating_add(price_level.total_quantity());
+        }
+
+        total
+    }
+
     /// Get all orders at a specific price level
     pub fn get_orders_at_price(&self, price: u64, side: Side) -> Vec<Arc<OrderType<T>>>
     where
