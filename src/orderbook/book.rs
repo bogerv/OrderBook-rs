@@ -5,6 +5,7 @@ use super::error::OrderBookError;
 use super::snapshot::{OrderBookSnapshot, OrderBookSnapshotPackage};
 use crate::orderbook::trade::{TradeListener, TradeResult};
 use crate::utils::current_time_millis;
+use crossbeam_skiplist::SkipMap;
 use dashmap::DashMap;
 use pricelevel::{MatchResult, OrderId, OrderType, PriceLevel, Side, UuidGenerator};
 use serde::Serialize;
@@ -21,13 +22,17 @@ pub struct OrderBook<T = ()> {
     /// The symbol or identifier for this order book
     pub(super) symbol: String,
 
-    /// Bid side price levels (buy orders), stored in a concurrent map for lock-free access
+    /// Bid side price levels (buy orders), stored in a concurrent ordered map (skip list)
     /// The map is keyed by price levels and stores Arc references to PriceLevel instances
-    pub(super) bids: DashMap<u64, Arc<PriceLevel>>,
+    /// Using SkipMap provides O(log N) operations with automatic ordering, eliminating
+    /// the need to sort prices during matching (optimization from O(N log N) to O(M log N))
+    pub(super) bids: SkipMap<u64, Arc<PriceLevel>>,
 
-    /// Ask side price levels (sell orders), stored in a concurrent map for lock-free access
+    /// Ask side price levels (sell orders), stored in a concurrent ordered map (skip list)
     /// The map is keyed by price levels and stores Arc references to PriceLevel instances
-    pub(super) asks: DashMap<u64, Arc<PriceLevel>>,
+    /// Using SkipMap provides O(log N) operations with automatic ordering, eliminating
+    /// the need to sort prices during matching (optimization from O(N log N) to O(M log N))
+    pub(super) asks: SkipMap<u64, Arc<PriceLevel>>,
 
     /// A concurrent map from order ID to (price, side) for fast lookups
     /// This avoids having to search through all price levels to find an order
@@ -279,8 +284,8 @@ where
 
         Self {
             symbol: symbol.to_string(),
-            bids: DashMap::new(),
-            asks: DashMap::new(),
+            bids: SkipMap::new(),
+            asks: SkipMap::new(),
             order_locations: DashMap::new(),
             transaction_id_generator: UuidGenerator::new(namespace),
             last_trade_price: AtomicU64::new(0),
@@ -299,8 +304,8 @@ where
 
         Self {
             symbol: symbol.to_string(),
-            bids: DashMap::new(),
-            asks: DashMap::new(),
+            bids: SkipMap::new(),
+            asks: SkipMap::new(),
             order_locations: DashMap::new(),
             transaction_id_generator: UuidGenerator::new(namespace),
             last_trade_price: AtomicU64::new(0),
@@ -345,12 +350,16 @@ where
     }
 
     /// Get the best bid price, if any
+    ///
+    /// # Performance
+    /// O(1) operation using SkipMap's ordered structure (highest price is last)
     pub fn best_bid(&self) -> Option<u64> {
         if let Some(cached_bid) = self.cache.get_cached_best_bid() {
             return Some(cached_bid);
         }
 
-        let best_price = self.bids.iter().map(|item| *item.key()).max();
+        // SkipMap maintains sorted order, best bid (highest price) is last
+        let best_price = self.bids.iter().next_back().map(|entry| *entry.key());
 
         self.cache.update_best_prices(best_price, None);
 
@@ -358,12 +367,16 @@ where
     }
 
     /// Get the best ask price, if any
+    ///
+    /// # Performance
+    /// O(1) operation using SkipMap's ordered structure (lowest price is first)
     pub fn best_ask(&self) -> Option<u64> {
         if let Some(cached_ask) = self.cache.get_cached_best_ask() {
             return Some(cached_ask);
         }
 
-        let best_price = self.asks.iter().map(|item| *item.key()).min();
+        // SkipMap maintains sorted order, best ask (lowest price) is first
+        let best_price = self.asks.iter().next().map(|entry| *entry.key());
 
         self.cache.update_best_prices(None, best_price);
 
@@ -415,8 +428,9 @@ where
             Side::Sell => &self.asks,
         };
 
-        if let Some(price_level) = price_levels.get(&price) {
-            price_level
+        if let Some(entry) = price_levels.get(&price) {
+            entry
+                .value()
                 .iter_orders()
                 .into_iter()
                 .map(|order| Arc::new(self.convert_from_unit_type(&order)))
@@ -474,7 +488,8 @@ where
             };
 
             // Get the price level
-            if let Some(price_level) = price_levels.get(&price) {
+            if let Some(entry) = price_levels.get(&price) {
+                let price_level = entry.value();
                 // Iterate through the orders at this level to find the one with the matching ID
                 for order in price_level.iter_orders() {
                     if order.id() == order_id {
@@ -584,15 +599,15 @@ where
 
         // Create snapshots for each bid level
         for price in bid_prices {
-            if let Some(price_level) = self.bids.get(&price) {
-                bid_levels.push(price_level.snapshot());
+            if let Some(entry) = self.bids.get(&price) {
+                bid_levels.push(entry.value().snapshot());
             }
         }
 
         // Create snapshots for each ask level
         for price in ask_prices {
-            if let Some(price_level) = self.asks.get(&price) {
-                ask_levels.push(price_level.snapshot());
+            if let Some(entry) = self.asks.get(&price) {
+                ask_levels.push(entry.value().snapshot());
             }
         }
 
@@ -644,8 +659,14 @@ where
         }
 
         self.cache.invalidate();
-        self.bids.clear();
-        self.asks.clear();
+
+        // Clear all existing data
+        while let Some(entry) = self.bids.pop_front() {
+            drop(entry);
+        }
+        while let Some(entry) = self.asks.pop_front() {
+            drop(entry);
+        }
         self.order_locations.clear();
         self.has_traded.store(false, Ordering::Relaxed);
         self.last_trade_price.store(0, Ordering::Relaxed);
@@ -708,14 +729,28 @@ where
         (bid_volumes, ask_volumes)
     }
 
-    /// Get an Arc reference to the bids DashMap
+    /// Get an Arc reference to the bids as a DashMap
+    ///
+    /// # Note
+    /// Creates a snapshot by collecting all entries into a DashMap
     pub fn get_bids(&self) -> Arc<DashMap<u64, Arc<PriceLevel>>> {
-        Arc::new(self.bids.clone())
+        let map = DashMap::new();
+        for entry in self.bids.iter() {
+            map.insert(*entry.key(), entry.value().clone());
+        }
+        Arc::new(map)
     }
 
-    /// Get an Arc reference to the asks DashMap
+    /// Get an Arc reference to the asks as a DashMap
+    ///
+    /// # Note
+    /// Creates a snapshot by collecting all entries into a DashMap
     pub fn get_asks(&self) -> Arc<DashMap<u64, Arc<PriceLevel>>> {
-        Arc::new(self.asks.clone())
+        let map = DashMap::new();
+        for entry in self.asks.iter() {
+            map.insert(*entry.key(), entry.value().clone());
+        }
+        Arc::new(map)
     }
 
     /// Get a BTreeMap of bids with price as key and PriceLevel as value

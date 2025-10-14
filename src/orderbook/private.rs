@@ -45,8 +45,7 @@ where
 
         // Get or create the price level
         let price_level = book_side
-            .entry(price)
-            .or_insert_with(|| PriceLevel::new(price).into())
+            .get_or_insert(price, Arc::new(PriceLevel::new(price)))
             .value()
             .clone();
 
@@ -238,8 +237,8 @@ mod tests {
 
         // Verify order in price level by checking its properties
         let price_level = order_book.bids.get(&100).unwrap();
-        assert_eq!(price_level.order_count(), 1);
-        assert_eq!(price_level.total_quantity(), 10); // Check if quantity matches the added order
+        assert_eq!(price_level.value().order_count(), 1);
+        assert_eq!(price_level.value().total_quantity(), 10); // Check if quantity matches the added order
     }
 
     #[test]

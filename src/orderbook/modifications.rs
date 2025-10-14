@@ -171,12 +171,13 @@ where
                         Side::Sell => &self.asks,
                     };
 
-                    // Use entry() to safely modify the price level without deadlocks
+                    // Attempt to update the order within the price level
                     let mut result = None;
                     let mut is_empty = false;
 
-                    // Update the order in place within the price level
-                    price_levels.entry(price).and_modify(|price_level| {
+                    // Get the price level and update it
+                    if let Some(entry) = price_levels.get(&price) {
+                        let price_level = entry.value();
                         let update = OrderUpdate::UpdateQuantity {
                             order_id,
                             new_quantity,
@@ -189,7 +190,7 @@ where
                         }
 
                         is_empty = price_level.order_count() == 0;
-                    });
+                    }
 
                     // If the price level is now empty, remove it
                     if is_empty {
@@ -260,7 +261,7 @@ where
                         Side::Sell => &self.asks,
                     };
 
-                    // Use entry() to safely modify the price level
+                    // Attempt to cancel the order
                     let mut result = None;
                     let mut is_empty = false;
 
@@ -269,11 +270,12 @@ where
                         result = Some(current_order);
 
                         // Remove the order directly from the price level
-                        price_levels.entry(price).and_modify(|price_level| {
+                        if let Some(entry) = price_levels.get(&price) {
+                            let price_level = entry.value();
                             let cancel_update = OrderUpdate::Cancel { order_id };
                             let _ = price_level.update_order(cancel_update);
                             is_empty = price_level.order_count() == 0;
-                        });
+                        }
 
                         // Remove from order locations tracking
                         self.order_locations.remove(&order_id);
@@ -423,11 +425,12 @@ where
             // Create the update to cancel
             let update = OrderUpdate::Cancel { order_id };
 
-            // Use entry() to safely modify the price level
+            // Attempt to cancel the order from the price level
             let mut result = None;
             let mut empty_level = false;
 
-            price_levels.entry(price).and_modify(|price_level| {
+            if let Some(entry) = price_levels.get(&price) {
+                let price_level = entry.value();
                 // Try to cancel the order
                 if let Ok(cancelled) = price_level.update_order(update) {
                     result = cancelled;
@@ -435,7 +438,7 @@ where
                     // Check if the level became empty
                     empty_level = price_level.order_count() == 0;
                 }
-            });
+            }
 
             self.cache.invalidate();
             // If we got a result and the order was canceled
@@ -542,13 +545,11 @@ where
                 Side::Sell => &self.asks,
             };
 
-            let price_level = price_levels
-                .entry(price)
-                .or_insert_with(|| Arc::new(PriceLevel::new(price)));
+            let price_level = price_levels.get_or_insert(price, Arc::new(PriceLevel::new(price)));
 
             // Convert to unit type for PriceLevel compatibility
             let unit_order = self.convert_to_unit_type(&order);
-            let unit_order_arc = price_level.add_order(unit_order);
+            let unit_order_arc = price_level.value().add_order(unit_order);
             self.order_locations
                 .insert(unit_order_arc.id(), (price, side));
 

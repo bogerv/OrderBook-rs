@@ -713,7 +713,7 @@ mod tests {
     #[test]
     fn test_update_price_and_quantity() {
         let book = setup_book_with_orders();
-        let original_order_id = book.bids.get(&90).unwrap().iter_orders()[0].id();
+        let original_order_id = book.bids.get(&90).unwrap().value().iter_orders()[0].id();
 
         let result = book.update_order(OrderUpdate::UpdatePriceAndQuantity {
             order_id: original_order_id,

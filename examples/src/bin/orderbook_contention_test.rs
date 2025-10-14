@@ -8,7 +8,6 @@ use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use tracing::info;
-use uuid::Uuid;
 
 // Test parameters
 const THREAD_COUNT: usize = 12;

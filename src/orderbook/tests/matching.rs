@@ -129,7 +129,7 @@ mod tests {
         assert_eq!(book.asks.len(), 1); // One price level should remain
 
         let remaining_level = book.asks.get(&102).unwrap();
-        assert_eq!(remaining_level.total_quantity(), 20); // 40 - 20 = 20 remaining
+        assert_eq!(remaining_level.value().total_quantity(), 20); // 40 - 20 = 20 remaining
         assert_eq!(
             book.last_trade_price
                 .load(std::sync::atomic::Ordering::SeqCst),

@@ -3,7 +3,6 @@
 use orderbook_rs::{OrderBook, current_time_millis};
 use pricelevel::{OrderId, Side, TimeInForce, setup_logger};
 use tracing::info;
-use uuid::Uuid;
 
 fn main() {
     // Set up logging
