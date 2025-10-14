@@ -4,6 +4,8 @@ pub mod book;
 pub mod error;
 /// Multi-book management with centralized trade event routing.
 pub mod manager;
+/// Market impact simulation and liquidity analysis.
+pub mod market_impact;
 pub mod matching;
 
 mod cache;
@@ -19,6 +21,7 @@ pub mod trade;
 
 pub use book::OrderBook;
 pub use error::OrderBookError;
+pub use market_impact::{MarketImpact, OrderSimulation};
 pub use snapshot::{
     ORDERBOOK_SNAPSHOT_FORMAT_VERSION, OrderBookSnapshot, OrderBookSnapshotPackage,
 };

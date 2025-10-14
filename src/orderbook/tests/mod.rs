@@ -1,6 +1,7 @@
 mod book;
 mod depth_analysis;
 mod error;
+mod market_impact_tests;
 mod market_metrics;
 mod matching;
 mod modifications;
