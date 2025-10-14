@@ -1,6 +1,6 @@
 # OrderBook-rs Examples
 
-This directory contains **15 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
+This directory contains **16 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
 
 ## 📑 Quick Index
 
@@ -11,7 +11,8 @@ This directory contains **15 comprehensive examples** demonstrating various feat
 | `market_trades_demo` | Market order execution and trades | 🎓 Beginner |
 | `depth_analysis` | Market depth & liquidity analysis | 💡 Advanced |
 | `market_metrics` | Market metrics (VWAP, spread, imbalance) | 💡 Advanced |
-| `market_impact_simulation` | ⭐ **New!** Pre-trade impact & risk analysis | 💡 Advanced |
+| `market_impact_simulation` | Pre-trade impact & risk analysis | 💡 Advanced |
+| `intelligent_order_placement` | ⭐ **New!** Smart order placement for market makers | 💡 Advanced |
 | `trade_listener_demo` | Real-time trade notifications | 💡 Advanced |
 | `trade_listener_channels` | Multi-book trade routing | 💡 Advanced |
 | `orderbook_snapshot_restore` | State persistence & recovery | 💡 Advanced |
@@ -141,6 +142,50 @@ cargo run --bin market_impact_simulation
 - Liquidity analysis techniques
 - Pre-trade risk management workflows
 - Smart order sizing strategies
+
+---
+
+### 🎯 Intelligent Order Placement (`intelligent_order_placement.rs`)
+
+⭐ **New!** Smart order placement utilities for market makers and algorithmic traders.
+
+```bash
+cargo run --bin intelligent_order_placement
+```
+
+**Features demonstrated:**
+- `queue_ahead_at_price()` - Check order queue depth at specific price
+- `price_n_ticks_inside()` - Calculate price N ticks from best bid/ask
+- `price_for_queue_position()` - Find price for target queue position
+- `price_at_depth_adjusted()` - Optimal price for depth-based strategies
+
+**Key concepts:**
+- **Queue Position**: Understanding your place in the FIFO queue
+- **Tick-Based Pricing**: Strategic pricing relative to best prices
+- **Position Targeting**: Finding prices for specific competitive positions
+- **Depth-Based Strategy**: Optimizing placement based on cumulative depth
+
+**Use cases:**
+- **Market Making**: Optimize quote placement for execution probability
+- **Queue Optimization**: Maximize fills by targeting light queues
+- **Competitive Positioning**: Balance aggressiveness vs. execution cost
+- **Liquidity Provision**: Strategic placement at key depth levels
+- **Smart Routing**: Compare and select optimal price levels
+
+**Practical applications:**
+- Analyze queue depth at each price level
+- Calculate prices 1-3 ticks inside best bid/ask
+- Target specific queue positions (1st, 2nd, 3rd, etc.)
+- Find optimal prices based on target depth (e.g., just inside 100 units)
+- Implement adaptive market making strategies
+- Decision making: join heavy queue vs. place 1 tick inside
+
+**What you'll learn:**
+- How queue position affects execution probability
+- Strategic pricing for market makers
+- Trade-offs between price improvement and execution speed
+- Depth-based order placement strategies
+- Practical market making decision workflows
 
 ---
 
@@ -520,14 +565,15 @@ cargo run --bin prelude_demo
 ---
 
 ### 💡 For Advanced Features
-1. **`market_impact_simulation.rs`** - ⭐ **New!** Pre-trade impact & risk analysis
-2. **`market_metrics.rs`** - Market metrics (VWAP, spread, imbalance)
-3. **`depth_analysis.rs`** - Market depth and liquidity analysis
-4. **`trade_listener_demo.rs`** - Real-time event notifications
-5. **`trade_listener_channels.rs`** - Multi-book trade routing
-6. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
+1. **`intelligent_order_placement.rs`** - ⭐ **New!** Smart order placement for market makers
+2. **`market_impact_simulation.rs`** - Pre-trade impact & risk analysis
+3. **`market_metrics.rs`** - Market metrics (VWAP, spread, imbalance)
+4. **`depth_analysis.rs`** - Market depth and liquidity analysis
+5. **`trade_listener_demo.rs`** - Real-time event notifications
+6. **`trade_listener_channels.rs`** - Multi-book trade routing
+7. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
 
-**Use these to:** Build market-making bots, implement advanced trading strategies, assess pre-trade risk, manage multiple order books, generate trading signals.
+**Use these to:** Build market-making bots, optimize order placement, implement advanced trading strategies, assess pre-trade risk, manage multiple order books, generate trading signals.
 
 ---
 
@@ -608,9 +654,10 @@ For detailed API documentation, see:
 3. Run `market_trades_demo` to see trades in action
 4. Learn `market_metrics` for trading signals and risk management
 5. Explore `market_impact_simulation` for pre-trade risk assessment
-6. Study `depth_analysis` for advanced market making
-7. Try `multi_threaded_orderbook` to understand concurrency
-8. Dive into `orderbook_hft_simulation` for realistic scenarios
+6. Study `intelligent_order_placement` for market making strategies
+7. Review `depth_analysis` for advanced liquidity analysis
+8. Try `multi_threaded_orderbook` to understand concurrency
+9. Dive into `orderbook_hft_simulation` for realistic scenarios
 
 **Performance testing:**
 - Always use `--release` flag for accurate benchmarks
