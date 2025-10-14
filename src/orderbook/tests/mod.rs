@@ -1,4 +1,5 @@
 mod book;
+mod depth_analysis;
 mod error;
 mod matching;
 mod modifications;
