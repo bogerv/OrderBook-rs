@@ -1,6 +1,6 @@
 # OrderBook-rs Examples
 
-This directory contains **13 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
+This directory contains **14 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
 
 ## 📑 Quick Index
 
@@ -9,7 +9,8 @@ This directory contains **13 comprehensive examples** demonstrating various feat
 | `prelude_demo` | Quick start with simplified imports | 🎓 Beginner |
 | `basic_orderbook` | Comprehensive OrderBook introduction | 🎓 Beginner |
 | `market_trades_demo` | Market order execution and trades | 🎓 Beginner |
-| `depth_analysis` | ⭐ **New!** Market depth & liquidity analysis | 💡 Advanced |
+| `depth_analysis` | Market depth & liquidity analysis | 💡 Advanced |
+| `market_metrics` | ⭐ **New!** Market metrics (VWAP, spread, imbalance) | 💡 Advanced |
 | `trade_listener_demo` | Real-time trade notifications | 💡 Advanced |
 | `trade_listener_channels` | Multi-book trade routing | 💡 Advanced |
 | `orderbook_snapshot_restore` | State persistence & recovery | 💡 Advanced |
@@ -56,6 +57,44 @@ cargo run --bin depth_analysis
 - Order execution planning
 - Liquidity analysis
 - Price impact estimation
+
+---
+
+### 📈 Market Metrics (`market_metrics.rs`)
+
+⭐ **New!** Comprehensive demonstration of market metrics for algorithmic trading and risk management.
+
+```bash
+cargo run --bin market_metrics
+```
+
+**Features demonstrated:**
+- `mid_price()` - Average of best bid and ask
+- `spread_absolute()` - Absolute spread in price units
+- `spread_bps(multiplier)` - Spread in basis points with optional custom multiplier
+- `vwap()` - Volume-Weighted Average Price for execution planning
+- `micro_price()` - Volume-weighted price at best levels
+- `order_book_imbalance()` - Buy/sell pressure indicator (-1.0 to 1.0)
+- Custom spread calculations (bps, percentage, pips)
+
+**Metrics explained:**
+- **Mid Price**: Simple average for quick reference
+- **Spread**: Measures liquidity cost (tight = good, wide = poor)
+- **VWAP**: Expected execution price including slippage
+- **Micro Price**: More accurate fair value than mid price
+- **Imbalance**: Directional pressure (positive = bullish, negative = bearish)
+
+**Practical applications:**
+- **Liquidity Assessment**: Using spread_bps to gauge market conditions
+- **Execution Planning**: VWAP calculation for optimal order sizing
+- **Signal Generation**: Combining imbalance and micro price for trading signals
+- **Risk Management**: Slippage estimation for position sizing
+
+**What you'll learn:**
+- Standard market microstructure metrics
+- How to assess market liquidity
+- Execution cost estimation techniques
+- Building trading signals from order book data
 
 ---
 
@@ -435,12 +474,13 @@ cargo run --bin prelude_demo
 ---
 
 ### 💡 For Advanced Features
-1. **`depth_analysis.rs`** - ⭐ **New!** Market depth and liquidity analysis
-2. **`trade_listener_demo.rs`** - Real-time event notifications
-3. **`trade_listener_channels.rs`** - Multi-book trade routing
-4. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
+1. **`market_metrics.rs`** - ⭐ **New!** Market metrics (VWAP, spread, imbalance)
+2. **`depth_analysis.rs`** - Market depth and liquidity analysis
+3. **`trade_listener_demo.rs`** - Real-time event notifications
+4. **`trade_listener_channels.rs`** - Multi-book trade routing
+5. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
 
-**Use these to:** Build market-making bots, implement advanced trading strategies, manage multiple order books.
+**Use these to:** Build market-making bots, implement advanced trading strategies, manage multiple order books, generate trading signals.
 
 ---
 
@@ -519,9 +559,10 @@ For detailed API documentation, see:
 1. Start with `prelude_demo` to understand the API basics
 2. Study `basic_orderbook` for comprehensive coverage
 3. Run `market_trades_demo` to see trades in action
-4. Explore `depth_analysis` for advanced market making
-5. Try `multi_threaded_orderbook` to understand concurrency
-6. Dive into `orderbook_hft_simulation` for realistic scenarios
+4. Learn `market_metrics` for trading signals and risk management
+5. Explore `depth_analysis` for advanced market making
+6. Try `multi_threaded_orderbook` to understand concurrency
+7. Dive into `orderbook_hft_simulation` for realistic scenarios
 
 **Performance testing:**
 - Always use `--release` flag for accurate benchmarks

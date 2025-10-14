@@ -16,6 +16,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tracing::trace;
 use uuid::Uuid;
 
+/// Default basis points multiplier for spread calculations
+/// One basis point = 0.01% = 0.0001
+const DEFAULT_BASIS_POINTS_MULTIPLIER: f64 = 10_000.0;
+
 /// The OrderBook manages a collection of price levels for both bid and ask sides.
 /// It supports adding, cancelling, and matching orders with lock-free operations where possible.
 pub struct OrderBook<T = ()> {
@@ -583,6 +587,262 @@ where
         }
 
         total
+    }
+
+    /// Returns the absolute spread (ask - bid) in price units
+    ///
+    /// This is an alias for `spread()` provided for API consistency.
+    ///
+    /// # Returns
+    /// - `Some(spread)` if both best bid and best ask exist
+    /// - `None` if either side is empty
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 105, 10, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// if let Some(spread) = book.spread_absolute() {
+    ///     println!("Absolute spread: {}", spread); // 5
+    /// }
+    /// ```
+    #[must_use]
+    pub fn spread_absolute(&self) -> Option<u64> {
+        self.spread()
+    }
+
+    /// Returns the spread in basis points (bps)
+    ///
+    /// Basis points are calculated as: ((ask - bid) / mid_price) * multiplier
+    /// One basis point = 0.01% = 0.0001
+    ///
+    /// # Arguments
+    /// - `bps_multiplier`: Optional custom multiplier for basis points calculation.
+    ///   If `None`, uses the default value of 10,000.
+    ///   Common values: 10,000 for bps, 1,000,000 for pips in FX
+    ///
+    /// # Returns
+    /// - `Some(bps)` if both best bid and best ask exist
+    /// - `None` if either side is empty or mid price is zero
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 10000, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 10010, 10, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// // Using default 10,000 multiplier
+    /// if let Some(spread_bps) = book.spread_bps(None) {
+    ///     println!("Spread: {:.2} bps", spread_bps); // ~10 bps
+    /// }
+    ///
+    /// // Using custom multiplier for percentage
+    /// if let Some(spread_pct) = book.spread_bps(Some(100.0)) {
+    ///     println!("Spread: {:.2}%", spread_pct); // ~0.10%
+    /// }
+    /// ```
+    #[must_use]
+    pub fn spread_bps(&self, bps_multiplier: Option<f64>) -> Option<f64> {
+        let multiplier = bps_multiplier.unwrap_or(DEFAULT_BASIS_POINTS_MULTIPLIER);
+
+        match (self.best_bid(), self.best_ask(), self.mid_price()) {
+            (Some(bid), Some(ask), Some(mid)) if mid > 0.0 => {
+                let spread = ask.saturating_sub(bid) as f64;
+                Some((spread / mid) * multiplier)
+            }
+            _ => None,
+        }
+    }
+
+    /// Calculates the volume-weighted average price (VWAP) for a given quantity
+    ///
+    /// VWAP walks through price levels in order until the target quantity is filled,
+    /// calculating the weighted average price based on the quantities at each level.
+    ///
+    /// # Arguments
+    /// - `quantity`: The target quantity to fill (in units)
+    /// - `side`: The side to calculate VWAP for (Buy = execute against asks, Sell = execute against bids)
+    ///
+    /// # Returns
+    /// - `Some(vwap)` if sufficient liquidity exists to fill the quantity
+    /// - `None` if insufficient liquidity or quantity is zero
+    ///
+    /// # Performance
+    /// O(M log N) where M is the number of levels needed to reach the target quantity.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Sell, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 105, 15, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// // Calculate VWAP for buying 20 units
+    /// if let Some(vwap) = book.vwap(20, Side::Buy) {
+    ///     println!("VWAP for buying 20 units: {:.2}", vwap);
+    /// }
+    /// ```
+    #[must_use]
+    pub fn vwap(&self, quantity: u64, side: Side) -> Option<f64> {
+        if quantity == 0 {
+            return None;
+        }
+
+        // For Buy orders, we execute against asks (in ascending order)
+        // For Sell orders, we execute against bids (in descending order)
+        let price_levels = match side {
+            Side::Buy => &self.asks,
+            Side::Sell => &self.bids,
+        };
+
+        if price_levels.is_empty() {
+            return None;
+        }
+
+        let mut remaining = quantity;
+        let mut total_cost = 0u128; // Use u128 to avoid overflow
+        let mut total_filled = 0u64;
+
+        // Iterate in price-priority order
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter()), // Lowest to highest (asks)
+            Side::Sell => Box::new(price_levels.iter().rev()), // Highest to lowest (bids)
+        };
+
+        for entry in iter {
+            if remaining == 0 {
+                break;
+            }
+
+            let price = *entry.key();
+            let price_level = entry.value();
+            let available = price_level.total_quantity();
+
+            if available == 0 {
+                continue;
+            }
+
+            let fill_qty = remaining.min(available);
+            total_cost = total_cost.saturating_add((price as u128) * (fill_qty as u128));
+            total_filled = total_filled.saturating_add(fill_qty);
+            remaining = remaining.saturating_sub(fill_qty);
+        }
+
+        if total_filled == quantity {
+            Some(total_cost as f64 / total_filled as f64)
+        } else {
+            None // Insufficient liquidity
+        }
+    }
+
+    /// Calculates the micro price (weighted price by volume at best bid and ask)
+    ///
+    /// The micro price is calculated as:
+    /// `(best_ask * bid_volume + best_bid * ask_volume) / (bid_volume + ask_volume)`
+    ///
+    /// This metric gives more weight to the side with more volume, providing
+    /// a better estimate of the "true" price than the simple mid price.
+    ///
+    /// # Returns
+    /// - `Some(micro_price)` if both best bid and best ask exist with non-zero volumes
+    /// - `None` if either side is empty or both volumes are zero
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 50, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 105, 30, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// if let Some(micro) = book.micro_price() {
+    ///     println!("Micro price: {:.2}", micro);
+    /// }
+    /// ```
+    #[must_use]
+    pub fn micro_price(&self) -> Option<f64> {
+        let best_bid_price = self.best_bid()?;
+        let best_ask_price = self.best_ask()?;
+
+        // Get volumes at best levels
+        let bid_volume = self.bids.get(&best_bid_price)?.value().total_quantity();
+        let ask_volume = self.asks.get(&best_ask_price)?.value().total_quantity();
+
+        let total_volume = bid_volume.saturating_add(ask_volume);
+
+        if total_volume == 0 {
+            return None;
+        }
+
+        // micro_price = (ask_price * bid_volume + bid_price * ask_volume) / (bid_volume + ask_volume)
+        let numerator = (best_ask_price as f64 * bid_volume as f64)
+            + (best_bid_price as f64 * ask_volume as f64);
+        let denominator = total_volume as f64;
+
+        Some(numerator / denominator)
+    }
+
+    /// Calculates the order book imbalance ratio for the top N levels
+    ///
+    /// The imbalance is calculated as:
+    /// `(bid_volume - ask_volume) / (bid_volume + ask_volume)`
+    ///
+    /// # Arguments
+    /// - `levels`: Number of top price levels to consider (must be > 0)
+    ///
+    /// # Returns
+    /// - A value between -1.0 and 1.0:
+    ///   - `> 0`: More buy pressure (bids dominate)
+    ///   - `< 0`: More sell pressure (asks dominate)
+    ///   - `≈ 0`: Balanced order book
+    ///   - Returns `0.0` if both sides are empty or `levels` is 0
+    ///
+    /// # Performance
+    /// O(M log N) where M is the number of levels requested.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 60, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 105, 40, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// let imbalance = book.order_book_imbalance(5);
+    /// if imbalance > 0.0 {
+    ///     println!("More buy pressure: {:.2}", imbalance);
+    /// }
+    /// ```
+    #[must_use]
+    pub fn order_book_imbalance(&self, levels: usize) -> f64 {
+        if levels == 0 {
+            return 0.0;
+        }
+
+        let bid_volume = self.total_depth_at_levels(levels, Side::Buy);
+        let ask_volume = self.total_depth_at_levels(levels, Side::Sell);
+
+        let total_volume = bid_volume.saturating_add(ask_volume);
+
+        if total_volume == 0 {
+            return 0.0;
+        }
+
+        let bid_f64 = bid_volume as f64;
+        let ask_f64 = ask_volume as f64;
+
+        (bid_f64 - ask_f64) / (bid_f64 + ask_f64)
     }
 
     /// Get all orders at a specific price level
