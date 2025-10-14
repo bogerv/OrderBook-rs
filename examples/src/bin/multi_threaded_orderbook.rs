@@ -4,7 +4,6 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 use std::time::{Duration, Instant};
 use tracing::info;
-use uuid::Uuid;
 
 // Number of threads to use for the test
 const THREAD_COUNT: usize = 8;
