@@ -1,6 +1,6 @@
 # OrderBook-rs Examples
 
-This directory contains **14 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
+This directory contains **15 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
 
 ## 📑 Quick Index
 
@@ -10,7 +10,8 @@ This directory contains **14 comprehensive examples** demonstrating various feat
 | `basic_orderbook` | Comprehensive OrderBook introduction | 🎓 Beginner |
 | `market_trades_demo` | Market order execution and trades | 🎓 Beginner |
 | `depth_analysis` | Market depth & liquidity analysis | 💡 Advanced |
-| `market_metrics` | ⭐ **New!** Market metrics (VWAP, spread, imbalance) | 💡 Advanced |
+| `market_metrics` | Market metrics (VWAP, spread, imbalance) | 💡 Advanced |
+| `market_impact_simulation` | ⭐ **New!** Pre-trade impact & risk analysis | 💡 Advanced |
 | `trade_listener_demo` | Real-time trade notifications | 💡 Advanced |
 | `trade_listener_channels` | Multi-book trade routing | 💡 Advanced |
 | `orderbook_snapshot_restore` | State persistence & recovery | 💡 Advanced |
@@ -95,6 +96,51 @@ cargo run --bin market_metrics
 - How to assess market liquidity
 - Execution cost estimation techniques
 - Building trading signals from order book data
+
+---
+
+### 🎯 Market Impact Simulation (`market_impact_simulation.rs`)
+
+⭐ **New!** Pre-trade analysis tool for understanding market impact before order execution.
+
+```bash
+cargo run --bin market_impact_simulation
+```
+
+**Features demonstrated:**
+- `market_impact()` - Comprehensive impact analysis before execution
+- `simulate_market_order()` - Step-by-step fill simulation
+- `liquidity_in_range()` - Price range liquidity analysis
+- Pre-trade risk assessment workflow
+
+**Key metrics provided:**
+- **Average Execution Price**: VWAP across all fills
+- **Slippage Analysis**: Absolute and basis points slippage
+- **Liquidity Depth**: Levels consumed and available quantity
+- **Fill Simulation**: Detailed breakdown of each fill
+- **Cost Estimation**: Total execution cost calculation
+
+**Use cases:**
+- **Risk Management**: Assess order impact before execution
+- **Smart Order Routing**: Compare liquidity across venues
+- **Execution Strategy**: Determine optimal order sizing
+- **Backtesting**: Realistic fill simulations for strategy testing
+- **Compliance**: Pre-trade risk checks and reporting
+
+**Practical applications:**
+- Analyze different order sizes (100, 250, 500, 1000 units)
+- Compare buy vs sell side liquidity
+- Simulate exact execution fills
+- Check liquidity in specific price ranges
+- Generate pre-trade risk classifications (LOW/MEDIUM/HIGH)
+- Recommend execution strategies (market order, split order, TWAP, etc.)
+
+**What you'll learn:**
+- How to assess market impact before trading
+- Understanding slippage and execution costs
+- Liquidity analysis techniques
+- Pre-trade risk management workflows
+- Smart order sizing strategies
 
 ---
 
@@ -474,13 +520,14 @@ cargo run --bin prelude_demo
 ---
 
 ### 💡 For Advanced Features
-1. **`market_metrics.rs`** - ⭐ **New!** Market metrics (VWAP, spread, imbalance)
-2. **`depth_analysis.rs`** - Market depth and liquidity analysis
-3. **`trade_listener_demo.rs`** - Real-time event notifications
-4. **`trade_listener_channels.rs`** - Multi-book trade routing
-5. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
+1. **`market_impact_simulation.rs`** - ⭐ **New!** Pre-trade impact & risk analysis
+2. **`market_metrics.rs`** - Market metrics (VWAP, spread, imbalance)
+3. **`depth_analysis.rs`** - Market depth and liquidity analysis
+4. **`trade_listener_demo.rs`** - Real-time event notifications
+5. **`trade_listener_channels.rs`** - Multi-book trade routing
+6. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
 
-**Use these to:** Build market-making bots, implement advanced trading strategies, manage multiple order books, generate trading signals.
+**Use these to:** Build market-making bots, implement advanced trading strategies, assess pre-trade risk, manage multiple order books, generate trading signals.
 
 ---
 
@@ -560,9 +607,10 @@ For detailed API documentation, see:
 2. Study `basic_orderbook` for comprehensive coverage
 3. Run `market_trades_demo` to see trades in action
 4. Learn `market_metrics` for trading signals and risk management
-5. Explore `depth_analysis` for advanced market making
-6. Try `multi_threaded_orderbook` to understand concurrency
-7. Dive into `orderbook_hft_simulation` for realistic scenarios
+5. Explore `market_impact_simulation` for pre-trade risk assessment
+6. Study `depth_analysis` for advanced market making
+7. Try `multi_threaded_orderbook` to understand concurrency
+8. Dive into `orderbook_hft_simulation` for realistic scenarios
 
 **Performance testing:**
 - Always use `--release` flag for accurate benchmarks

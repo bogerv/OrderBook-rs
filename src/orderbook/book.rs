@@ -2,6 +2,7 @@
 
 use super::cache::PriceLevelCache;
 use super::error::OrderBookError;
+use super::market_impact::{MarketImpact, OrderSimulation};
 use super::snapshot::{OrderBookSnapshot, OrderBookSnapshotPackage};
 use crate::orderbook::trade::{TradeListener, TradeResult};
 use crate::utils::current_time_millis;
@@ -843,6 +844,293 @@ where
         let ask_f64 = ask_volume as f64;
 
         (bid_f64 - ask_f64) / (bid_f64 + ask_f64)
+    }
+
+    /// Calculates the market impact of a hypothetical order
+    ///
+    /// Analyzes how an order would affect the market by walking through
+    /// available liquidity and calculating key metrics including average price,
+    /// slippage, and the number of levels consumed.
+    ///
+    /// # Arguments
+    /// - `quantity`: The order quantity to analyze (in units)
+    /// - `side`: The side of the order (Buy = execute against asks, Sell = execute against bids)
+    ///
+    /// # Returns
+    /// A `MarketImpact` struct containing:
+    /// - `avg_price`: Volume-weighted average execution price
+    /// - `worst_price`: Furthest price from the best price
+    /// - `slippage`: Absolute difference from best price
+    /// - `slippage_bps`: Slippage in basis points
+    /// - `levels_consumed`: Number of price levels used
+    /// - `total_quantity_available`: Total liquidity available
+    ///
+    /// # Performance
+    /// O(M log N) where M is the number of levels needed.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Sell, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 105, 15, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// let impact = book.market_impact(20, Side::Buy);
+    /// println!("Average price: {}", impact.avg_price);
+    /// println!("Slippage: {} bps", impact.slippage_bps);
+    /// println!("Levels consumed: {}", impact.levels_consumed);
+    /// ```
+    #[must_use]
+    pub fn market_impact(&self, quantity: u64, side: Side) -> MarketImpact {
+        if quantity == 0 {
+            return MarketImpact::empty();
+        }
+
+        // For Buy orders, we execute against asks (in ascending order)
+        // For Sell orders, we execute against bids (in descending order)
+        let price_levels = match side {
+            Side::Buy => &self.asks,
+            Side::Sell => &self.bids,
+        };
+
+        if price_levels.is_empty() {
+            return MarketImpact::empty();
+        }
+
+        let best_price = match side {
+            Side::Buy => self.best_ask(),
+            Side::Sell => self.best_bid(),
+        };
+
+        let best_price = match best_price {
+            Some(price) => price,
+            None => return MarketImpact::empty(),
+        };
+
+        let mut remaining = quantity;
+        let mut total_cost = 0u128;
+        let mut total_filled = 0u64;
+        let mut worst_price = best_price;
+        let mut levels_consumed = 0;
+
+        // Iterate in price-priority order
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter()), // Lowest to highest (asks)
+            Side::Sell => Box::new(price_levels.iter().rev()), // Highest to lowest (bids)
+        };
+
+        for entry in iter {
+            if remaining == 0 {
+                break;
+            }
+
+            let price = *entry.key();
+            let price_level = entry.value();
+            let available = price_level.total_quantity();
+
+            if available == 0 {
+                continue;
+            }
+
+            levels_consumed += 1;
+            let fill_qty = remaining.min(available);
+            total_cost = total_cost.saturating_add((price as u128) * (fill_qty as u128));
+            total_filled = total_filled.saturating_add(fill_qty);
+            worst_price = price;
+            remaining = remaining.saturating_sub(fill_qty);
+        }
+
+        let avg_price = if total_filled > 0 {
+            total_cost as f64 / total_filled as f64
+        } else {
+            0.0
+        };
+
+        let slippage = match side {
+            Side::Buy => worst_price.saturating_sub(best_price),
+            Side::Sell => best_price.saturating_sub(worst_price),
+        };
+
+        let slippage_bps = if best_price > 0 {
+            (slippage as f64 / best_price as f64) * DEFAULT_BASIS_POINTS_MULTIPLIER
+        } else {
+            0.0
+        };
+
+        MarketImpact {
+            avg_price,
+            worst_price,
+            slippage,
+            slippage_bps,
+            levels_consumed,
+            total_quantity_available: total_filled,
+        }
+    }
+
+    /// Simulates the execution of a market order
+    ///
+    /// Provides a detailed step-by-step simulation of how a market order
+    /// would be filled, including all individual fills at different price levels.
+    ///
+    /// # Arguments
+    /// - `quantity`: The order quantity to simulate (in units)
+    /// - `side`: The side of the order (Buy = execute against asks, Sell = execute against bids)
+    ///
+    /// # Returns
+    /// An `OrderSimulation` struct containing:
+    /// - `fills`: Vector of (price, quantity) pairs for each fill
+    /// - `avg_price`: Volume-weighted average execution price
+    /// - `total_filled`: Total quantity that would be filled
+    /// - `remaining_quantity`: Quantity that could not be filled
+    ///
+    /// # Performance
+    /// O(M log N) where M is the number of levels needed.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Sell, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 105, 15, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// let simulation = book.simulate_market_order(20, Side::Buy);
+    /// for (price, qty) in &simulation.fills {
+    ///     println!("Fill: {} @ {}", qty, price);
+    /// }
+    /// println!("Average price: {}", simulation.avg_price);
+    /// ```
+    #[must_use]
+    pub fn simulate_market_order(&self, quantity: u64, side: Side) -> OrderSimulation {
+        if quantity == 0 {
+            return OrderSimulation::empty();
+        }
+
+        // For Buy orders, we execute against asks (in ascending order)
+        // For Sell orders, we execute against bids (in descending order)
+        let price_levels = match side {
+            Side::Buy => &self.asks,
+            Side::Sell => &self.bids,
+        };
+
+        if price_levels.is_empty() {
+            let mut sim = OrderSimulation::empty();
+            sim.remaining_quantity = quantity;
+            return sim;
+        }
+
+        let mut remaining = quantity;
+        let mut total_cost = 0u128;
+        let mut total_filled = 0u64;
+        let mut fills = Vec::new();
+
+        // Iterate in price-priority order
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter()), // Lowest to highest (asks)
+            Side::Sell => Box::new(price_levels.iter().rev()), // Highest to lowest (bids)
+        };
+
+        for entry in iter {
+            if remaining == 0 {
+                break;
+            }
+
+            let price = *entry.key();
+            let price_level = entry.value();
+            let available = price_level.total_quantity();
+
+            if available == 0 {
+                continue;
+            }
+
+            let fill_qty = remaining.min(available);
+            total_cost = total_cost.saturating_add((price as u128) * (fill_qty as u128));
+            total_filled = total_filled.saturating_add(fill_qty);
+            fills.push((price, fill_qty));
+            remaining = remaining.saturating_sub(fill_qty);
+        }
+
+        let avg_price = if total_filled > 0 {
+            total_cost as f64 / total_filled as f64
+        } else {
+            0.0
+        };
+
+        OrderSimulation {
+            fills,
+            avg_price,
+            total_filled,
+            remaining_quantity: remaining,
+        }
+    }
+
+    /// Calculates available liquidity within a specific price range
+    ///
+    /// Sums up the total quantity available at price levels that fall
+    /// within the specified price range (inclusive).
+    ///
+    /// # Arguments
+    /// - `min_price`: Minimum price of the range (inclusive, in price units)
+    /// - `max_price`: Maximum price of the range (inclusive, in price units)
+    /// - `side`: The side to analyze (Buy for bids, Sell for asks)
+    ///
+    /// # Returns
+    /// Total quantity available in the specified price range (in units)
+    ///
+    /// # Performance
+    /// O(M log N) where M is the number of levels in the range.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 105, 15, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 110, 20, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// // Get liquidity between 100 and 105 (inclusive)
+    /// let liquidity = book.liquidity_in_range(100, 105, Side::Buy);
+    /// assert_eq!(liquidity, 25); // 10 + 15
+    /// ```
+    #[must_use]
+    pub fn liquidity_in_range(&self, min_price: u64, max_price: u64, side: Side) -> u64 {
+        if min_price > max_price {
+            return 0;
+        }
+
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if price_levels.is_empty() {
+            return 0;
+        }
+
+        let mut total_liquidity = 0u64;
+
+        for entry in price_levels.iter() {
+            let price = *entry.key();
+
+            if price < min_price {
+                continue;
+            }
+
+            if price > max_price {
+                break;
+            }
+
+            let price_level = entry.value();
+            let quantity = price_level.total_quantity();
+            total_liquidity = total_liquidity.saturating_add(quantity);
+        }
+
+        total_liquidity
     }
 
     /// Get all orders at a specific price level

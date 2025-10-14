@@ -21,6 +21,9 @@ pub use crate::orderbook::OrderBook;
 pub use crate::orderbook::OrderBookError;
 pub use crate::orderbook::manager::{BookManager, BookManagerStd, BookManagerTokio};
 
+// Market impact and simulation types
+pub use crate::orderbook::market_impact::{MarketImpact, OrderSimulation};
+
 // Trade-related types
 pub use crate::orderbook::trade::{
     TradeEvent, TradeInfo, TradeListener, TradeResult, TransactionInfo,
