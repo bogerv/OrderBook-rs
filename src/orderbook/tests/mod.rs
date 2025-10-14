@@ -7,6 +7,7 @@ mod matching;
 mod modifications;
 mod operations;
 mod order;
+mod order_placement_tests;
 mod serialize_tests;
 mod snapshot;
 mod time_in_force;

@@ -1133,6 +1133,255 @@ where
         total_liquidity
     }
 
+    /// Returns the number of orders ahead in queue at a specific price level
+    ///
+    /// Calculates how many orders are already in the queue at the specified
+    /// price level. Useful for estimating execution probability and queue position.
+    ///
+    /// # Arguments
+    /// - `price`: The price level to check (in price units)
+    /// - `side`: The side to check (Buy for bids, Sell for asks)
+    ///
+    /// # Returns
+    /// The number of orders at that price level. Returns 0 if the price level doesn't exist.
+    ///
+    /// # Performance
+    /// O(1) for price level lookup, O(N) for counting orders where N is orders at that level.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 20, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// let orders_ahead = book.queue_ahead_at_price(100, Side::Buy);
+    /// assert_eq!(orders_ahead, 2);
+    /// ```
+    #[must_use]
+    pub fn queue_ahead_at_price(&self, price: u64, side: Side) -> usize {
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if let Some(entry) = price_levels.get(&price) {
+            entry.value().iter_orders().len()
+        } else {
+            0
+        }
+    }
+
+    /// Calculates the price N ticks inside the best price
+    ///
+    /// Useful for placing orders that are competitive but not at the best price.
+    /// For buy orders, "inside" means lower than best bid.
+    /// For sell orders, "inside" means higher than best ask.
+    ///
+    /// # Arguments
+    /// - `n_ticks`: Number of ticks to move inside (in ticks)
+    /// - `tick_size`: The size of each tick (in price units)
+    /// - `side`: The side to calculate for (Buy or Sell)
+    ///
+    /// # Returns
+    /// - `Some(price)` if best price exists and calculation is valid
+    /// - `None` if no best price exists or calculation would underflow/overflow
+    ///
+    /// # Performance
+    /// O(1) operation using cached best prices.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 105, 10, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// // Buy side: best bid is 100, 1 tick inside = 99 (if tick_size = 1)
+    /// if let Some(price) = book.price_n_ticks_inside(1, 1, Side::Buy) {
+    ///     assert_eq!(price, 99);
+    /// }
+    ///
+    /// // Sell side: best ask is 105, 1 tick inside = 106 (if tick_size = 1)
+    /// if let Some(price) = book.price_n_ticks_inside(1, 1, Side::Sell) {
+    ///     assert_eq!(price, 106);
+    /// }
+    /// ```
+    #[must_use]
+    pub fn price_n_ticks_inside(&self, n_ticks: usize, tick_size: u64, side: Side) -> Option<u64> {
+        if n_ticks == 0 || tick_size == 0 {
+            return None;
+        }
+
+        let adjustment = (n_ticks as u64).checked_mul(tick_size)?;
+
+        match side {
+            Side::Buy => {
+                let best_bid = self.best_bid()?;
+                best_bid.checked_sub(adjustment)
+            }
+            Side::Sell => {
+                let best_ask = self.best_ask()?;
+                best_ask.checked_add(adjustment)
+            }
+        }
+    }
+
+    /// Calculates the optimal price to be at a specific queue position
+    ///
+    /// Determines what price level would place you at the Nth position in the queue.
+    /// Position 1 means front of queue (best price), position 2 means second-best, etc.
+    ///
+    /// # Arguments
+    /// - `position`: Target queue position (1 = best price, 2 = second best, etc.)
+    /// - `side`: The side to calculate for (Buy or Sell)
+    ///
+    /// # Returns
+    /// - `Some(price)` if the position exists in the order book
+    /// - `None` if position is 0 or exceeds available price levels
+    ///
+    /// # Performance
+    /// O(N) where N is the target position, due to iteration through price levels.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 99, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 98, 10, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// // Position 1 should be best bid (100)
+    /// assert_eq!(book.price_for_queue_position(1, Side::Buy), Some(100));
+    /// // Position 2 should be second best (99)
+    /// assert_eq!(book.price_for_queue_position(2, Side::Buy), Some(99));
+    /// ```
+    #[must_use]
+    pub fn price_for_queue_position(&self, position: usize, side: Side) -> Option<u64> {
+        if position == 0 {
+            return None;
+        }
+
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if price_levels.is_empty() {
+            return None;
+        }
+
+        // For bids: iterate from highest to lowest (reverse)
+        // For asks: iterate from lowest to highest (forward)
+        let mut current_position = 1;
+
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter().rev()),
+            Side::Sell => Box::new(price_levels.iter()),
+        };
+
+        for entry in iter {
+            if current_position == position {
+                return Some(*entry.key());
+            }
+            current_position += 1;
+        }
+
+        None
+    }
+
+    /// Suggests optimal price to place an order just inside a target depth
+    ///
+    /// Calculates the price level where placing an order would position it
+    /// just inside (better than) the specified cumulative depth. Useful for
+    /// depth-based market making strategies.
+    ///
+    /// # Arguments
+    /// - `target_depth`: Target cumulative quantity (in units)
+    /// - `tick_size`: The size of each tick (in price units)
+    /// - `side`: The side to calculate for (Buy or Sell)
+    ///
+    /// # Returns
+    /// - `Some(price)` adjusted by one tick inside the depth level
+    /// - `None` if insufficient depth exists or calculation fails
+    ///
+    /// # Performance
+    /// O(M log N) where M is the number of levels to reach target depth.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 50, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 99, 60, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 98, 70, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// // Want to be just inside 100 units of depth
+    /// // Depth at 100: 50, at 99: 110, so we want to be at 100 (just inside 110)
+    /// if let Some(price) = book.price_at_depth_adjusted(100, 1, Side::Buy) {
+    ///     assert_eq!(price, 100); // One tick better than the level that reaches depth
+    /// }
+    /// ```
+    #[must_use]
+    pub fn price_at_depth_adjusted(
+        &self,
+        target_depth: u64,
+        tick_size: u64,
+        side: Side,
+    ) -> Option<u64> {
+        if target_depth == 0 || tick_size == 0 {
+            return None;
+        }
+
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if price_levels.is_empty() {
+            return None;
+        }
+
+        let mut cumulative_depth = 0u64;
+        let mut last_price = None;
+
+        // For bids: iterate from highest to lowest (reverse)
+        // For asks: iterate from lowest to highest (forward)
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter().rev()),
+            Side::Sell => Box::new(price_levels.iter()),
+        };
+
+        for entry in iter {
+            let price = *entry.key();
+            let quantity = entry.value().total_quantity();
+            cumulative_depth = cumulative_depth.saturating_add(quantity);
+
+            if cumulative_depth >= target_depth {
+                // Found the level where we exceed target depth
+                // Return one tick better than this price
+                return match side {
+                    Side::Buy => price.checked_add(tick_size),
+                    Side::Sell => price.checked_sub(tick_size),
+                };
+            }
+
+            last_price = Some(price);
+        }
+
+        // If we didn't reach target depth, return the last price seen
+        // (deepest level available)
+        last_price
+    }
+
     /// Get all orders at a specific price level
     pub fn get_orders_at_price(&self, price: u64, side: Side) -> Vec<Arc<OrderType<T>>>
     where
