@@ -105,6 +105,26 @@
 //! - Strategy adaptation based on real-time conditions
 //! - Trading decision support and analytics
 //!
+//! ### Enriched Snapshots
+//!
+//! Pre-calculated metrics in snapshots for high-frequency trading:
+//!
+//! - **Enriched Snapshots**: `enriched_snapshot()` - Single-pass snapshot with all metrics
+//! - **Custom Metrics**: `enriched_snapshot_with_metrics()` - Select specific metrics for optimization
+//! - **Metric Flags**: Bitflags for precise control over calculated metrics
+//!
+//! **Metrics included:**
+//! - Mid price and spread (in basis points)
+//! - Total depth on each side
+//! - VWAP for top N levels
+//! - Order book imbalance
+//!
+//! **Benefits:**
+//! - Single pass through data vs multiple passes
+//! - Better cache locality and performance
+//! - Reduced computational overhead
+//! - Flexibility with optional metric selection
+//!
 //! # Performance Analysis of the OrderBook System
 //!
 //! This analyzes the performance of the OrderBook system based on tests conducted on an Apple M4 Max processor. The data comes from a High-Frequency Trading (HFT) simulation and price level distribution performance tests.
@@ -220,6 +240,7 @@ mod utils;
 pub use orderbook::iterators::LevelInfo;
 pub use orderbook::manager::{BookManager, BookManagerStd, BookManagerTokio};
 pub use orderbook::market_impact::{MarketImpact, OrderSimulation};
+pub use orderbook::snapshot::{EnrichedSnapshot, MetricFlags};
 pub use orderbook::statistics::{DepthStats, DistributionBin};
 pub use orderbook::trade::{TradeListener, TradeResult};
 pub use orderbook::{OrderBook, OrderBookError, OrderBookSnapshot};

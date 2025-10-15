@@ -4,7 +4,7 @@ use super::cache::PriceLevelCache;
 use super::error::OrderBookError;
 use super::iterators::{LevelInfo, LevelsInRange, LevelsUntilDepth, LevelsWithCumulativeDepth};
 use super::market_impact::{MarketImpact, OrderSimulation};
-use super::snapshot::{OrderBookSnapshot, OrderBookSnapshotPackage};
+use super::snapshot::{EnrichedSnapshot, MetricFlags, OrderBookSnapshot, OrderBookSnapshotPackage};
 use super::statistics::{DepthStats, DistributionBin};
 use crate::orderbook::trade::{TradeListener, TradeResult};
 use crate::utils::current_time_millis;
@@ -1847,6 +1847,124 @@ where
         }
 
         Ok(())
+    }
+
+    /// Creates an enriched snapshot with pre-calculated metrics
+    ///
+    /// This provides better performance than creating a snapshot and calculating
+    /// metrics separately, as it computes everything in a single pass through the data.
+    /// All metrics are calculated by default.
+    ///
+    /// # Arguments
+    /// - `depth`: Maximum number of price levels to include on each side
+    ///
+    /// # Returns
+    /// `EnrichedSnapshot` with all metrics pre-calculated
+    ///
+    /// # Performance
+    /// O(N) where N is depth, single pass through data for all metrics.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 101, 10, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// let snapshot = book.enriched_snapshot(10);
+    ///
+    /// if let Some(mid) = snapshot.mid_price {
+    ///     println!("Mid price: {}", mid);
+    /// }
+    /// if let Some(spread) = snapshot.spread_bps {
+    ///     println!("Spread: {} bps", spread);
+    /// }
+    /// println!("Bid depth: {}", snapshot.bid_depth_total);
+    /// println!("Imbalance: {}", snapshot.order_book_imbalance);
+    /// ```
+    #[must_use]
+    pub fn enriched_snapshot(&self, depth: usize) -> EnrichedSnapshot {
+        self.enriched_snapshot_with_metrics(depth, MetricFlags::ALL)
+    }
+
+    /// Creates an enriched snapshot with custom metric selection
+    ///
+    /// Allows you to specify which metrics to calculate for optimization.
+    /// Only the selected metrics will be computed, others will have default values.
+    ///
+    /// # Arguments
+    /// - `depth`: Maximum number of price levels to include on each side
+    /// - `flags`: Bitflags specifying which metrics to calculate
+    ///
+    /// # Returns
+    /// `EnrichedSnapshot` with selected metrics calculated
+    ///
+    /// # Performance
+    /// O(N) where N is depth, but faster than `enriched_snapshot()` if fewer metrics selected.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::{OrderBook, MetricFlags};
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 101, 10, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// // Calculate only mid price and spread for performance
+    /// let snapshot = book.enriched_snapshot_with_metrics(
+    ///     10,
+    ///     MetricFlags::MID_PRICE | MetricFlags::SPREAD
+    /// );
+    ///
+    /// assert!(snapshot.mid_price.is_some());
+    /// assert!(snapshot.spread_bps.is_some());
+    /// ```
+    #[must_use]
+    pub fn enriched_snapshot_with_metrics(
+        &self,
+        depth: usize,
+        flags: MetricFlags,
+    ) -> EnrichedSnapshot {
+        // Get all bid prices and sort them in descending order
+        let mut bid_prices: Vec<u64> = self.bids.iter().map(|item| *item.key()).collect();
+        bid_prices.sort_by(|a, b| b.cmp(a)); // Descending order
+        bid_prices.truncate(depth);
+
+        // Get all ask prices and sort them in ascending order
+        let mut ask_prices: Vec<u64> = self.asks.iter().map(|item| *item.key()).collect();
+        ask_prices.sort(); // Ascending order
+        ask_prices.truncate(depth);
+
+        let mut bid_levels = Vec::with_capacity(bid_prices.len());
+        let mut ask_levels = Vec::with_capacity(ask_prices.len());
+
+        // Create snapshots for each bid level
+        for price in bid_prices {
+            if let Some(entry) = self.bids.get(&price) {
+                bid_levels.push(entry.value().snapshot());
+            }
+        }
+
+        // Create snapshots for each ask level
+        for price in ask_prices {
+            if let Some(entry) = self.asks.get(&price) {
+                ask_levels.push(entry.value().snapshot());
+            }
+        }
+
+        // Create enriched snapshot with pre-calculated metrics
+        EnrichedSnapshot::with_metrics(
+            self.symbol.clone(),
+            current_time_millis(),
+            bid_levels,
+            ask_levels,
+            depth, // Use depth for VWAP calculation
+            depth, // Use depth for imbalance calculation
+            flags,
+        )
     }
 
     /// Get the total volume at each price level

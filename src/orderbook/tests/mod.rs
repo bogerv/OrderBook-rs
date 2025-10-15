@@ -1,5 +1,6 @@
 mod book;
 mod depth_analysis;
+mod enriched_snapshot_tests;
 mod error;
 mod iterator_tests;
 mod market_impact_tests;
