@@ -89,6 +89,22 @@
 //! - **Standard & Tokio Support**: Synchronous and async variants
 //! - **Event Routing**: Centralized trade notifications across all books
 //!
+//! ### Aggregate Statistics
+//!
+//! Comprehensive statistical analysis for market condition detection:
+//!
+//! - **Depth Statistics**: `depth_statistics()` - Volume, average sizes, weighted prices, std dev
+//! - **Market Pressure**: `buy_sell_pressure()` - Total volume on each side
+//! - **Liquidity Health**: `is_thin_book()` - Detect insufficient liquidity
+//! - **Distribution Analysis**: `depth_distribution()` - Histogram of liquidity concentration
+//! - **Imbalance Detection**: `order_book_imbalance()` - Buy/sell pressure ratio (-1.0 to 1.0)
+//!
+//! **Use cases:**
+//! - Market condition detection and trend identification
+//! - Risk management and liquidity monitoring
+//! - Strategy adaptation based on real-time conditions
+//! - Trading decision support and analytics
+//!
 //! # Performance Analysis of the OrderBook System
 //!
 //! This analyzes the performance of the OrderBook system based on tests conducted on an Apple M4 Max processor. The data comes from a High-Frequency Trading (HFT) simulation and price level distribution performance tests.
@@ -204,6 +220,7 @@ mod utils;
 pub use orderbook::iterators::LevelInfo;
 pub use orderbook::manager::{BookManager, BookManagerStd, BookManagerTokio};
 pub use orderbook::market_impact::{MarketImpact, OrderSimulation};
+pub use orderbook::statistics::{DepthStats, DistributionBin};
 pub use orderbook::trade::{TradeListener, TradeResult};
 pub use orderbook::{OrderBook, OrderBookError, OrderBookSnapshot};
 pub use utils::current_time_millis;

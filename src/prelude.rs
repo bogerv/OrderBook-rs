@@ -27,6 +27,9 @@ pub use crate::orderbook::iterators::LevelInfo;
 // Market impact and simulation types
 pub use crate::orderbook::market_impact::{MarketImpact, OrderSimulation};
 
+// Statistics types
+pub use crate::orderbook::statistics::{DepthStats, DistributionBin};
+
 // Trade-related types
 pub use crate::orderbook::trade::{
     TradeEvent, TradeInfo, TradeListener, TradeResult, TransactionInfo,

@@ -5,6 +5,7 @@ use super::error::OrderBookError;
 use super::iterators::{LevelInfo, LevelsInRange, LevelsUntilDepth, LevelsWithCumulativeDepth};
 use super::market_impact::{MarketImpact, OrderSimulation};
 use super::snapshot::{OrderBookSnapshot, OrderBookSnapshotPackage};
+use super::statistics::{DepthStats, DistributionBin};
 use crate::orderbook::trade::{TradeListener, TradeResult};
 use crate::utils::current_time_millis;
 use crossbeam_skiplist::SkipMap;
@@ -1923,5 +1924,303 @@ where
     /// Get an Arc reference to the order_locations DashMap
     pub fn get_order_locations_arc(&self) -> Arc<DashMap<OrderId, (u64, Side)>> {
         Arc::new(self.order_locations.clone())
+    }
+
+    /// Computes comprehensive depth statistics for a side of the order book
+    ///
+    /// Analyzes the top N price levels to provide detailed statistical metrics
+    /// about liquidity distribution, including volume, average sizes, weighted
+    /// prices, and variability measures.
+    ///
+    /// # Arguments
+    /// - `side`: The side to analyze (Buy for bids, Sell for asks)
+    /// - `levels`: Maximum number of top levels to analyze (0 = all levels)
+    ///
+    /// # Returns
+    /// `DepthStats` containing comprehensive statistics. Returns zero stats if no levels exist.
+    ///
+    /// # Performance
+    /// O(N) where N is the number of levels analyzed.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 99, 20, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 98, 30, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// let stats = book.depth_statistics(Side::Buy, 10);
+    /// println!("Total volume: {}", stats.total_volume);
+    /// println!("Average level size: {:.2}", stats.avg_level_size);
+    /// println!("Weighted avg price: {:.2}", stats.weighted_avg_price);
+    /// ```
+    #[must_use]
+    pub fn depth_statistics(&self, side: Side, levels: usize) -> DepthStats {
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if price_levels.is_empty() {
+            return DepthStats::zero();
+        }
+
+        let iter: Box<dyn Iterator<Item = _>> = match side {
+            Side::Buy => Box::new(price_levels.iter().rev()),
+            Side::Sell => Box::new(price_levels.iter()),
+        };
+
+        let mut total_volume = 0u64;
+        let mut weighted_price_sum = 0u64;
+        let mut sizes = Vec::new();
+        let mut min_size = u64::MAX;
+        let mut max_size = 0u64;
+        let mut count = 0usize;
+
+        for entry in iter {
+            if levels > 0 && count >= levels {
+                break;
+            }
+
+            let price = *entry.key();
+            let quantity = entry.value().total_quantity();
+
+            if quantity == 0 {
+                continue;
+            }
+
+            total_volume = total_volume.saturating_add(quantity);
+            weighted_price_sum = weighted_price_sum.saturating_add(price.saturating_mul(quantity));
+            sizes.push(quantity);
+            min_size = min_size.min(quantity);
+            max_size = max_size.max(quantity);
+            count += 1;
+        }
+
+        if count == 0 || total_volume == 0 {
+            return DepthStats::zero();
+        }
+
+        let avg_level_size = total_volume as f64 / count as f64;
+        let weighted_avg_price = weighted_price_sum as f64 / total_volume as f64;
+
+        // Calculate standard deviation
+        let variance: f64 = sizes
+            .iter()
+            .map(|&size| {
+                let diff = size as f64 - avg_level_size;
+                diff * diff
+            })
+            .sum::<f64>()
+            / count as f64;
+        let std_dev = variance.sqrt();
+
+        DepthStats {
+            total_volume,
+            levels_count: count,
+            avg_level_size,
+            weighted_avg_price,
+            min_level_size: if min_size == u64::MAX { 0 } else { min_size },
+            max_level_size: max_size,
+            std_dev_level_size: std_dev,
+        }
+    }
+
+    /// Calculates buy and sell pressure based on total volume on each side
+    ///
+    /// Returns the total quantity on the bid and ask sides as a measure
+    /// of market pressure. Higher values indicate stronger interest.
+    ///
+    /// # Returns
+    /// Tuple of `(buy_pressure, sell_pressure)` where each value is the total
+    /// quantity available on that side (in units).
+    ///
+    /// # Performance
+    /// O(N + M) where N is bid levels and M is ask levels.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 50, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 101, 30, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// let (buy_pressure, sell_pressure) = book.buy_sell_pressure();
+    /// println!("Buy: {}, Sell: {}", buy_pressure, sell_pressure);
+    ///
+    /// if buy_pressure > sell_pressure {
+    ///     println!("More buying interest");
+    /// }
+    /// ```
+    #[must_use]
+    pub fn buy_sell_pressure(&self) -> (u64, u64) {
+        let buy_pressure: u64 = self
+            .bids
+            .iter()
+            .map(|entry| entry.value().total_quantity())
+            .sum();
+
+        let sell_pressure: u64 = self
+            .asks
+            .iter()
+            .map(|entry| entry.value().total_quantity())
+            .sum();
+
+        (buy_pressure, sell_pressure)
+    }
+
+    /// Detects if the order book is thin (has low liquidity)
+    ///
+    /// A thin book has insufficient liquidity, which can lead to high slippage
+    /// and price volatility. This method checks if the total volume in the top
+    /// N levels falls below a threshold.
+    ///
+    /// # Arguments
+    /// - `threshold`: Minimum total volume required (in units)
+    /// - `levels`: Number of top levels to check on each side
+    ///
+    /// # Returns
+    /// `true` if either side has insufficient liquidity, `false` otherwise
+    ///
+    /// # Performance
+    /// O(N) where N is levels to check.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 5, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 101, 5, Side::Sell, TimeInForce::Gtc, None);
+    ///
+    /// if book.is_thin_book(100, 5) {
+    ///     println!("Warning: Thin book detected - high slippage risk!");
+    /// }
+    /// ```
+    #[must_use]
+    pub fn is_thin_book(&self, threshold: u64, levels: usize) -> bool {
+        let bid_stats = self.depth_statistics(Side::Buy, levels);
+        let ask_stats = self.depth_statistics(Side::Sell, levels);
+
+        bid_stats.total_volume < threshold || ask_stats.total_volume < threshold
+    }
+
+    /// Calculates depth distribution histogram for a side
+    ///
+    /// Divides the order book depth into equal price bins and calculates
+    /// the total volume in each bin. Useful for visualizing liquidity
+    /// distribution and identifying concentration points.
+    ///
+    /// # Arguments
+    /// - `side`: The side to analyze (Buy for bids, Sell for asks)
+    /// - `bins`: Number of bins to divide the depth into (must be > 0)
+    ///
+    /// # Returns
+    /// Vector of `DistributionBin` containing price ranges and volumes.
+    /// Returns empty vector if bins is 0 or no levels exist.
+    ///
+    /// # Performance
+    /// O(N) where N is total number of levels.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// for i in 0..10 {
+    ///     let price = 100 - i;
+    ///     let _ = book.add_limit_order(OrderId::new(), price, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// }
+    ///
+    /// let distribution = book.depth_distribution(Side::Buy, 5);
+    /// for bin in distribution {
+    ///     println!("Price {}-{}: {} units in {} levels",
+    ///              bin.min_price, bin.max_price, bin.volume, bin.level_count);
+    /// }
+    /// ```
+    #[must_use]
+    pub fn depth_distribution(&self, side: Side, bins: usize) -> Vec<DistributionBin> {
+        if bins == 0 {
+            return Vec::new();
+        }
+
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        if price_levels.is_empty() {
+            return Vec::new();
+        }
+
+        // Find min and max prices
+        let mut min_price = u64::MAX;
+        let mut max_price = 0u64;
+
+        for entry in price_levels.iter() {
+            let price = *entry.key();
+            min_price = min_price.min(price);
+            max_price = max_price.max(price);
+        }
+
+        if min_price == u64::MAX || max_price < min_price {
+            return Vec::new();
+        }
+
+        // Calculate bin width
+        let price_range = max_price - min_price;
+        let bin_width = if price_range == 0 {
+            1
+        } else {
+            price_range.div_ceil(bins as u64) // Ceiling division
+        };
+
+        // Initialize bins
+        let mut distribution = Vec::with_capacity(bins);
+        for i in 0..bins {
+            let bin_min = min_price + (i as u64 * bin_width);
+            let bin_max = if i == bins - 1 {
+                max_price + 1 // Make last bin inclusive
+            } else {
+                bin_min + bin_width
+            };
+
+            distribution.push(DistributionBin {
+                min_price: bin_min,
+                max_price: bin_max,
+                volume: 0,
+                level_count: 0,
+            });
+        }
+
+        // Fill bins with data
+        for entry in price_levels.iter() {
+            let price = *entry.key();
+            let quantity = entry.value().total_quantity();
+
+            if quantity == 0 {
+                continue;
+            }
+
+            // Find which bin this price belongs to
+            let bin_index = if price >= max_price {
+                bins - 1
+            } else {
+                ((price - min_price) / bin_width).min((bins - 1) as u64) as usize
+            };
+
+            distribution[bin_index].volume =
+                distribution[bin_index].volume.saturating_add(quantity);
+            distribution[bin_index].level_count += 1;
+        }
+
+        distribution
     }
 }

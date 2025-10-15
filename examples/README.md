@@ -1,6 +1,6 @@
 # OrderBook-rs Examples
 
-This directory contains **17 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
+This directory contains **18 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
 
 ## 📑 Quick Index
 
@@ -13,7 +13,8 @@ This directory contains **17 comprehensive examples** demonstrating various feat
 | `market_metrics` | Market metrics (VWAP, spread, imbalance) | 💡 Advanced |
 | `market_impact_simulation` | Pre-trade impact & risk analysis | 💡 Advanced |
 | `intelligent_order_placement` | Smart order placement for market makers | 💡 Advanced |
-| `functional_iterators` | ⭐ **New!** Functional-style depth analysis with iterators | 💡 Advanced |
+| `functional_iterators` | Functional-style depth analysis with iterators | 💡 Advanced |
+| `aggregate_statistics` | ⭐ **New!** Market condition detection & analytics | 💡 Advanced |
 | `trade_listener_demo` | Real-time trade notifications | 💡 Advanced |
 | `trade_listener_channels` | Multi-book trade routing | 💡 Advanced |
 | `orderbook_snapshot_restore` | State persistence & recovery | 💡 Advanced |
@@ -240,6 +241,61 @@ cargo run --bin functional_iterators
 - Zero-allocation data processing
 - Building efficient analysis pipelines
 - Short-circuit optimization strategies
+
+---
+
+### 📊 Aggregate Statistics (`aggregate_statistics.rs`)
+
+⭐ **New!** Comprehensive statistical analysis for market condition detection and decision support.
+
+```bash
+cargo run --bin aggregate_statistics
+```
+
+**Features demonstrated:**
+- `depth_statistics()` - Comprehensive depth metrics (volume, avg sizes, weighted prices, std dev)
+- `buy_sell_pressure()` - Market pressure indicators
+- `is_thin_book()` - Liquidity health checks
+- `depth_distribution()` - Histogram of liquidity concentration
+- `order_book_imbalance()` - Buy/sell pressure ratio
+
+**Key concepts:**
+- **Depth Statistics**: Volume distribution, size variability, weighted averages
+- **Market Pressure**: Total volume on each side as sentiment indicators
+- **Liquidity Health**: Detecting thin books and insufficient depth
+- **Distribution Analysis**: Visualizing liquidity concentration across price ranges
+- **Imbalance Detection**: Identifying directional bias in the book
+
+**Use cases:**
+- **Market Condition Detection**: Identify trends, pressure, and sentiment
+- **Risk Management**: Monitor liquidity health and volatility
+- **Strategy Adaptation**: Adjust parameters based on real-time conditions
+- **Decision Support**: Data-driven trading decisions
+- **Analytics & Reporting**: Generate market quality metrics
+
+**Practical applications:**
+- Determine safe order sizes based on depth statistics
+- Assess market conditions before trading
+- Detect liquidity risks and thin book warnings
+- Analyze distribution of liquidity across price bands
+- Identify directional opportunities from imbalance
+- Risk assessment using level size variability
+
+**Metrics provided:**
+- **Volume metrics**: Total, average, min, max per level
+- **Price metrics**: Weighted average prices
+- **Variability metrics**: Standard deviation of level sizes
+- **Pressure metrics**: Buy vs sell volume comparison
+- **Distribution metrics**: Liquidity histogram by price bins
+- **Imbalance metrics**: Directional bias (-1.0 to 1.0)
+
+**What you'll learn:**
+- Statistical analysis of order book depth
+- Market condition detection techniques
+- Liquidity risk assessment methods
+- Distribution analysis for concentration detection
+- Practical trading decision workflows
+- Risk management using quantitative metrics
 
 ---
 
@@ -619,16 +675,17 @@ cargo run --bin prelude_demo
 ---
 
 ### 💡 For Advanced Features
-1. **`functional_iterators.rs`** - ⭐ **New!** Functional-style depth analysis with iterators
-2. **`intelligent_order_placement.rs`** - Smart order placement for market makers
-3. **`market_impact_simulation.rs`** - Pre-trade impact & risk analysis
-4. **`market_metrics.rs`** - Market metrics (VWAP, spread, imbalance)
-5. **`depth_analysis.rs`** - Market depth and liquidity analysis
-6. **`trade_listener_demo.rs`** - Real-time event notifications
-7. **`trade_listener_channels.rs`** - Multi-book trade routing
-8. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
+1. **`aggregate_statistics.rs`** - ⭐ **New!** Market condition detection & analytics
+2. **`functional_iterators.rs`** - Functional-style depth analysis with iterators
+3. **`intelligent_order_placement.rs`** - Smart order placement for market makers
+4. **`market_impact_simulation.rs`** - Pre-trade impact & risk analysis
+5. **`market_metrics.rs`** - Market metrics (VWAP, spread, imbalance)
+6. **`depth_analysis.rs`** - Market depth and liquidity analysis
+7. **`trade_listener_demo.rs`** - Real-time event notifications
+8. **`trade_listener_channels.rs`** - Multi-book trade routing
+9. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
 
-**Use these to:** Build market-making bots, optimize order placement, implement advanced trading strategies, assess pre-trade risk, manage multiple order books, generate trading signals, perform efficient depth analysis.
+**Use these to:** Build market-making bots, optimize order placement, implement advanced trading strategies, assess pre-trade risk, manage multiple order books, generate trading signals, perform efficient depth analysis, detect market conditions.
 
 ---
 
@@ -708,12 +765,13 @@ For detailed API documentation, see:
 2. Study `basic_orderbook` for comprehensive coverage
 3. Run `market_trades_demo` to see trades in action
 4. Learn `market_metrics` for trading signals and risk management
-5. Explore `functional_iterators` for efficient depth analysis
-6. Study `market_impact_simulation` for pre-trade risk assessment
-7. Review `intelligent_order_placement` for market making strategies
-8. Analyze `depth_analysis` for advanced liquidity analysis
-9. Try `multi_threaded_orderbook` to understand concurrency
-10. Dive into `orderbook_hft_simulation` for realistic scenarios
+5. Explore `aggregate_statistics` for market condition detection
+6. Review `functional_iterators` for efficient depth analysis
+7. Study `market_impact_simulation` for pre-trade risk assessment
+8. Analyze `intelligent_order_placement` for market making strategies
+9. Review `depth_analysis` for advanced liquidity analysis
+10. Try `multi_threaded_orderbook` to understand concurrency
+11. Dive into `orderbook_hft_simulation` for realistic scenarios
 
 **Performance testing:**
 - Always use `--release` flag for accurate benchmarks

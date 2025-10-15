@@ -9,6 +9,8 @@ pub mod manager;
 /// Market impact simulation and liquidity analysis.
 pub mod market_impact;
 pub mod matching;
+/// Aggregate statistics for order book analysis.
+pub mod statistics;
 
 mod cache;
 /// Contains the core logic for modifying the order book state, such as adding, canceling, or updating orders.
@@ -28,3 +30,4 @@ pub use market_impact::{MarketImpact, OrderSimulation};
 pub use snapshot::{
     ORDERBOOK_SNAPSHOT_FORMAT_VERSION, OrderBookSnapshot, OrderBookSnapshotPackage,
 };
+pub use statistics::{DepthStats, DistributionBin};
