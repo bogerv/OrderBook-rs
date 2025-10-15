@@ -58,6 +58,51 @@ This version introduces significant performance optimizations and architectural 
 ### Status
 This project is currently in active development and is not yet suitable for production use.
 
+### Advanced Features
+
+#### Market Metrics & Analysis
+
+The order book provides comprehensive market analysis capabilities:
+
+- **VWAP Calculation**: Volume-Weighted Average Price for analyzing true market price
+- **Spread Analysis**: Absolute and basis point spread calculations
+- **Micro Price**: Fair price estimation incorporating depth
+- **Order Book Imbalance**: Buy/sell pressure indicators
+- **Market Impact Simulation**: Pre-trade analysis for estimating slippage and execution costs
+- **Depth Analysis**: Cumulative depth and liquidity distribution
+
+#### Intelligent Order Placement
+
+Advanced utilities for market makers and algorithmic traders:
+
+- **Queue Analysis**: `queue_ahead_at_price()` - Check depth at specific price levels
+- **Tick-Based Pricing**: `price_n_ticks_inside()` - Calculate prices N ticks from best bid/ask
+- **Position Targeting**: `price_for_queue_position()` - Find prices for target queue positions
+- **Depth-Based Strategy**: `price_at_depth_adjusted()` - Optimal prices based on cumulative depth
+
+#### Functional Iterators
+
+Memory-efficient, composable iterators for order book analysis:
+
+- **Cumulative Depth Iteration**: `levels_with_cumulative_depth()` - Lazy iteration with running depth totals
+- **Depth-Limited Iteration**: `levels_until_depth()` - Auto-stop when target depth is reached
+- **Range-Based Iteration**: `levels_in_range()` - Filter levels by price range
+- **Predicate Search**: `find_level()` - Find first level matching custom conditions
+
+**Benefits:**
+- Zero allocation - O(1) memory vs O(N) for vectors
+- Lazy evaluation - compute only what's needed
+- Composable - works with standard iterator combinators (`.map()`, `.filter()`, `.take()`)
+- Short-circuit - stops early when conditions are met
+
+#### Multi-Book Management
+
+Centralized trade event routing and multi-book orchestration:
+
+- **BookManager**: Manage multiple order books with unified trade listener
+- **Standard & Tokio Support**: Synchronous and async variants
+- **Event Routing**: Centralized trade notifications across all books
+
 ## Performance Analysis of the OrderBook System
 
 This analyzes the performance of the OrderBook system based on tests conducted on an Apple M4 Max processor. The data comes from a High-Frequency Trading (HFT) simulation and price level distribution performance tests.

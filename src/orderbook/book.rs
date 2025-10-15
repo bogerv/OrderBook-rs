@@ -2,6 +2,7 @@
 
 use super::cache::PriceLevelCache;
 use super::error::OrderBookError;
+use super::iterators::{LevelInfo, LevelsInRange, LevelsUntilDepth, LevelsWithCumulativeDepth};
 use super::market_impact::{MarketImpact, OrderSimulation};
 use super::snapshot::{OrderBookSnapshot, OrderBookSnapshotPackage};
 use crate::orderbook::trade::{TradeListener, TradeResult};
@@ -1380,6 +1381,178 @@ where
         // If we didn't reach target depth, return the last price seen
         // (deepest level available)
         last_price
+    }
+
+    /// Returns an iterator over price levels with cumulative depth tracking
+    ///
+    /// Iterates through price levels in price-priority order (best to worst),
+    /// maintaining cumulative depth as it progresses. This provides a memory-efficient
+    /// way to analyze market depth distribution without allocating vectors.
+    ///
+    /// # Arguments
+    /// - `side`: The side to iterate (Buy for bids from highest to lowest, Sell for asks from lowest to highest)
+    ///
+    /// # Returns
+    /// An iterator yielding `LevelInfo` containing price, quantity, and cumulative depth
+    ///
+    /// # Performance
+    /// Lazy evaluation with O(1) memory overhead. Each iteration is O(log N) for skipmap traversal.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 99, 15, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 98, 20, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// // Functional-style analysis
+    /// for level in book.levels_with_cumulative_depth(Side::Buy).take(5) {
+    ///     println!("Price: {}, Qty: {}, Cumulative: {}",
+    ///              level.price, level.quantity, level.cumulative_depth);
+    ///     
+    ///     if level.cumulative_depth >= 30 {
+    ///         println!("Target depth reached!");
+    ///         break;
+    ///     }
+    /// }
+    /// ```
+    pub fn levels_with_cumulative_depth(&self, side: Side) -> LevelsWithCumulativeDepth<'_> {
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        LevelsWithCumulativeDepth::new(price_levels, side)
+    }
+
+    /// Returns an iterator over price levels until target depth is reached
+    ///
+    /// Automatically stops when cumulative depth reaches or exceeds the target.
+    /// This is useful for determining how many price levels are needed to fill
+    /// a specific quantity, without processing unnecessary deeper levels.
+    ///
+    /// # Arguments
+    /// - `target_depth`: Target cumulative quantity (in units)
+    /// - `side`: The side to iterate (Buy for bids, Sell for asks)
+    ///
+    /// # Returns
+    /// An iterator that stops when target depth is reached
+    ///
+    /// # Performance
+    /// Short-circuits early, processing only the minimum levels needed. O(M log N) where M is levels to reach target.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 99, 15, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 98, 20, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// // Collect levels needed for 30 units
+    /// let levels: Vec<_> = book.levels_until_depth(30, Side::Buy).collect();
+    /// println!("Levels needed: {}", levels.len());
+    /// ```
+    pub fn levels_until_depth(&self, target_depth: u64, side: Side) -> LevelsUntilDepth<'_> {
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        LevelsUntilDepth::new(price_levels, side, target_depth)
+    }
+
+    /// Returns an iterator over price levels within a specific price range
+    ///
+    /// Only yields levels where the price falls within [min_price, max_price] inclusive.
+    /// Useful for analyzing liquidity distribution in specific price bands without
+    /// allocating intermediate collections.
+    ///
+    /// # Arguments
+    /// - `min_price`: Minimum price of the range (inclusive, in price units)
+    /// - `max_price`: Maximum price of the range (inclusive, in price units)
+    /// - `side`: The side to iterate (Buy for bids, Sell for asks)
+    ///
+    /// # Returns
+    /// An iterator yielding only levels within the price range
+    ///
+    /// # Performance
+    /// Skips levels outside range, O(M log N) where M is levels in range.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 10, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 95, 15, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 90, 20, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// // Analyze levels between 90 and 100
+    /// let total_qty: u64 = book
+    ///     .levels_in_range(90, 100, Side::Buy)
+    ///     .map(|level| level.quantity)
+    ///     .sum();
+    /// println!("Total quantity in range: {}", total_qty);
+    /// ```
+    pub fn levels_in_range(&self, min_price: u64, max_price: u64, side: Side) -> LevelsInRange<'_> {
+        let price_levels = match side {
+            Side::Buy => &self.bids,
+            Side::Sell => &self.asks,
+        };
+
+        LevelsInRange::new(price_levels, side, min_price, max_price)
+    }
+
+    /// Finds the first price level matching a predicate
+    ///
+    /// Searches through price levels in price-priority order and returns the first
+    /// level that satisfies the given predicate function. The predicate receives
+    /// both the level information and cumulative depth for context-aware decisions.
+    ///
+    /// # Arguments
+    /// - `side`: The side to search (Buy for bids, Sell for asks)
+    /// - `predicate`: Function that takes `LevelInfo` and returns `true` if the level matches
+    ///
+    /// # Returns
+    /// - `Some(LevelInfo)` if a matching level is found
+    /// - `None` if no level matches or the book is empty
+    ///
+    /// # Performance
+    /// Short-circuits on first match, O(M log N) where M is position of match.
+    ///
+    /// # Examples
+    /// ```
+    /// use orderbook_rs::OrderBook;
+    /// use pricelevel::{OrderId, Side, TimeInForce};
+    ///
+    /// let book = OrderBook::<()>::new("BTC/USD");
+    /// let _ = book.add_limit_order(OrderId::new(), 100, 5, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 99, 15, Side::Buy, TimeInForce::Gtc, None);
+    /// let _ = book.add_limit_order(OrderId::new(), 98, 25, Side::Buy, TimeInForce::Gtc, None);
+    ///
+    /// // Find first level with quantity > 10
+    /// if let Some(level) = book.find_level(Side::Buy, |info| info.quantity > 10) {
+    ///     println!("First large level at price: {}", level.price);
+    /// }
+    ///
+    /// // Find first level where cumulative depth exceeds 20
+    /// if let Some(level) = book.find_level(Side::Buy, |info| info.cumulative_depth > 20) {
+    ///     println!("Depth threshold at: {}", level.price);
+    /// }
+    /// ```
+    pub fn find_level<F>(&self, side: Side, predicate: F) -> Option<LevelInfo>
+    where
+        F: Fn(&LevelInfo) -> bool,
+    {
+        self.levels_with_cumulative_depth(side)
+            .find(|level| predicate(level))
     }
 
     /// Get all orders at a specific price level
