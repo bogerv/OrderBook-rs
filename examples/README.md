@@ -1,6 +1,6 @@
 # OrderBook-rs Examples
 
-This directory contains **18 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
+This directory contains **19 comprehensive examples** demonstrating various features and use cases of the OrderBook-rs library. Each example is designed to showcase specific functionality and best practices for different use cases from beginner tutorials to advanced performance testing.
 
 ## 📑 Quick Index
 
@@ -14,7 +14,8 @@ This directory contains **18 comprehensive examples** demonstrating various feat
 | `market_impact_simulation` | Pre-trade impact & risk analysis | 💡 Advanced |
 | `intelligent_order_placement` | Smart order placement for market makers | 💡 Advanced |
 | `functional_iterators` | Functional-style depth analysis with iterators | 💡 Advanced |
-| `aggregate_statistics` | ⭐ **New!** Market condition detection & analytics | 💡 Advanced |
+| `aggregate_statistics` | Market condition detection & analytics | 💡 Advanced |
+| `enriched_snapshots` | ⭐ **New!** Pre-calculated metrics for HFT | 💡 Advanced |
 | `trade_listener_demo` | Real-time trade notifications | 💡 Advanced |
 | `trade_listener_channels` | Multi-book trade routing | 💡 Advanced |
 | `orderbook_snapshot_restore` | State persistence & recovery | 💡 Advanced |
@@ -296,6 +297,64 @@ cargo run --bin aggregate_statistics
 - Distribution analysis for concentration detection
 - Practical trading decision workflows
 - Risk management using quantitative metrics
+
+---
+
+### 📸 Enriched Snapshots (`enriched_snapshots.rs`)
+
+⭐ **New!** Pre-calculated metrics in snapshots for high-frequency trading and market data distribution.
+
+```bash
+cargo run --bin enriched_snapshots
+```
+
+**Features demonstrated:**
+- `enriched_snapshot()` - Snapshot with all metrics pre-calculated
+- `enriched_snapshot_with_metrics()` - Custom metric selection for optimization
+- `MetricFlags` - Bitflags for controlling which metrics to calculate
+
+**Key concepts:**
+- **Single-Pass Calculation**: All metrics computed in one pass through data
+- **Performance Optimization**: Better cache locality vs multiple passes
+- **Metric Selection**: Calculate only needed metrics for speed
+- **Pre-calculated Metrics**: Mid price, spread BPS, depth, VWAP, imbalance
+
+**Use cases:**
+- **High-Frequency Trading**: Low-latency snapshots with metrics
+- **Market Data Distribution**: Send enriched snapshots to subscribers
+- **Performance Critical Systems**: Reduce computational overhead
+- **Analytics**: Consistent metrics at same timestamp
+- **Risk Monitoring**: Quick liquidity and execution quality checks
+
+**Practical applications:**
+- Create snapshots with all metrics in single pass
+- Select specific metrics for performance (only mid price + spread)
+- Distribute enriched snapshots over network
+- Reduce client-side calculations
+- HFT trading decisions with pre-calculated data
+- Market data feeds with embedded analytics
+
+**Metrics included:**
+- **Mid Price**: Average of best bid and ask
+- **Spread (BPS)**: Spread in basis points
+- **Total Depth**: Volume on each side
+- **VWAP**: Volume-Weighted Average Price for top N levels
+- **Imbalance**: Buy/sell pressure ratio (-1.0 to 1.0)
+
+**Performance benefits:**
+- **Single Pass**: One iteration vs 5+ separate passes
+- **Cache Locality**: Better CPU cache utilization
+- **Reduced Overhead**: Fewer allocations and computations
+- **Lower Latency**: Critical for HFT applications
+- **Flexibility**: Optional metric selection
+
+**What you'll learn:**
+- Performance optimization for HFT systems
+- Single-pass data processing techniques
+- Bitflags for feature selection
+- Market data distribution patterns
+- Reducing computational overhead
+- Cache-friendly data structures
 
 ---
 
@@ -675,17 +734,18 @@ cargo run --bin prelude_demo
 ---
 
 ### 💡 For Advanced Features
-1. **`aggregate_statistics.rs`** - ⭐ **New!** Market condition detection & analytics
-2. **`functional_iterators.rs`** - Functional-style depth analysis with iterators
-3. **`intelligent_order_placement.rs`** - Smart order placement for market makers
-4. **`market_impact_simulation.rs`** - Pre-trade impact & risk analysis
-5. **`market_metrics.rs`** - Market metrics (VWAP, spread, imbalance)
-6. **`depth_analysis.rs`** - Market depth and liquidity analysis
-7. **`trade_listener_demo.rs`** - Real-time event notifications
-8. **`trade_listener_channels.rs`** - Multi-book trade routing
-9. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
+1. **`enriched_snapshots.rs`** - ⭐ **New!** Pre-calculated metrics for HFT
+2. **`aggregate_statistics.rs`** - Market condition detection & analytics
+3. **`functional_iterators.rs`** - Functional-style depth analysis with iterators
+4. **`intelligent_order_placement.rs`** - Smart order placement for market makers
+5. **`market_impact_simulation.rs`** - Pre-trade impact & risk analysis
+6. **`market_metrics.rs`** - Market metrics (VWAP, spread, imbalance)
+7. **`depth_analysis.rs`** - Market depth and liquidity analysis
+8. **`trade_listener_demo.rs`** - Real-time event notifications
+9. **`trade_listener_channels.rs`** - Multi-book trade routing
+10. **`orderbook_snapshot_restore.rs`** - State persistence and recovery
 
-**Use these to:** Build market-making bots, optimize order placement, implement advanced trading strategies, assess pre-trade risk, manage multiple order books, generate trading signals, perform efficient depth analysis, detect market conditions.
+**Use these to:** Build market-making bots, optimize order placement, implement advanced trading strategies, assess pre-trade risk, manage multiple order books, generate trading signals, perform efficient depth analysis, detect market conditions, distribute market data with pre-calculated metrics.
 
 ---
 
@@ -765,13 +825,14 @@ For detailed API documentation, see:
 2. Study `basic_orderbook` for comprehensive coverage
 3. Run `market_trades_demo` to see trades in action
 4. Learn `market_metrics` for trading signals and risk management
-5. Explore `aggregate_statistics` for market condition detection
-6. Review `functional_iterators` for efficient depth analysis
-7. Study `market_impact_simulation` for pre-trade risk assessment
-8. Analyze `intelligent_order_placement` for market making strategies
-9. Review `depth_analysis` for advanced liquidity analysis
-10. Try `multi_threaded_orderbook` to understand concurrency
-11. Dive into `orderbook_hft_simulation` for realistic scenarios
+5. Explore `enriched_snapshots` for performance optimization
+6. Review `aggregate_statistics` for market condition detection
+7. Analyze `functional_iterators` for efficient depth analysis
+8. Study `market_impact_simulation` for pre-trade risk assessment
+9. Review `intelligent_order_placement` for market making strategies
+10. Examine `depth_analysis` for advanced liquidity analysis
+11. Try `multi_threaded_orderbook` to understand concurrency
+12. Dive into `orderbook_hft_simulation` for realistic scenarios
 
 **Performance testing:**
 - Always use `--release` flag for accurate benchmarks

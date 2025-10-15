@@ -27,6 +27,9 @@ pub use crate::orderbook::iterators::LevelInfo;
 // Market impact and simulation types
 pub use crate::orderbook::market_impact::{MarketImpact, OrderSimulation};
 
+// Snapshot types
+pub use crate::orderbook::snapshot::{EnrichedSnapshot, MetricFlags, OrderBookSnapshot};
+
 // Statistics types
 pub use crate::orderbook::statistics::{DepthStats, DistributionBin};
 

@@ -28,6 +28,7 @@ pub use error::OrderBookError;
 pub use iterators::LevelInfo;
 pub use market_impact::{MarketImpact, OrderSimulation};
 pub use snapshot::{
-    ORDERBOOK_SNAPSHOT_FORMAT_VERSION, OrderBookSnapshot, OrderBookSnapshotPackage,
+    EnrichedSnapshot, MetricFlags, ORDERBOOK_SNAPSHOT_FORMAT_VERSION, OrderBookSnapshot,
+    OrderBookSnapshotPackage,
 };
 pub use statistics::{DepthStats, DistributionBin};
