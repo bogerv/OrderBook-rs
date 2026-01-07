@@ -860,6 +860,6 @@ For issues, questions, or contributions:
 
 ---
 
-**Version:** 0.4.6  
+**Version:** 0.4.7  
 **Last Updated:** October 2025  
 **License:** MIT
