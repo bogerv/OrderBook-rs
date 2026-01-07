@@ -237,6 +237,10 @@ pub mod orderbook;
 pub mod prelude;
 mod utils;
 
+pub use orderbook::implied_volatility::{
+    BlackScholes, IVConfig, IVError, IVParams, IVQuality, IVResult, OptionType, PriceSource,
+    SolverConfig,
+};
 pub use orderbook::iterators::LevelInfo;
 pub use orderbook::manager::{BookManager, BookManagerStd, BookManagerTokio};
 pub use orderbook::market_impact::{MarketImpact, OrderSimulation};

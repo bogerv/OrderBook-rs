@@ -2,6 +2,8 @@
 
 pub mod book;
 pub mod error;
+/// Implied volatility calculation from order book prices.
+pub mod implied_volatility;
 /// Functional-style iterators for order book analysis.
 pub mod iterators;
 /// Multi-book management with centralized trade event routing.
@@ -26,6 +28,10 @@ pub mod book_change_event;
 
 pub use book::OrderBook;
 pub use error::OrderBookError;
+pub use implied_volatility::{
+    BlackScholes, IVConfig, IVError, IVParams, IVQuality, IVResult, OptionType, PriceSource,
+    SolverConfig,
+};
 pub use iterators::LevelInfo;
 pub use market_impact::{MarketImpact, OrderSimulation};
 pub use snapshot::{
