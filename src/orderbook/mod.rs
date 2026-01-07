@@ -14,6 +14,8 @@ pub mod matching;
 /// Aggregate statistics for order book analysis.
 pub mod statistics;
 
+/// Price level change events for real-time order book updates.
+pub mod book_change_event;
 mod cache;
 /// Contains the core logic for modifying the order book state, such as adding, canceling, or updating orders.
 pub mod modifications;
@@ -24,7 +26,6 @@ pub mod snapshot;
 mod tests;
 /// Trade-related types including TradeResult and TradeListener for monitoring order executions.
 pub mod trade;
-pub mod book_change_event;
 
 pub use book::OrderBook;
 pub use error::OrderBookError;

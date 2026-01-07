@@ -6,6 +6,7 @@ use super::iterators::{LevelInfo, LevelsInRange, LevelsUntilDepth, LevelsWithCum
 use super::market_impact::{MarketImpact, OrderSimulation};
 use super::snapshot::{EnrichedSnapshot, MetricFlags, OrderBookSnapshot, OrderBookSnapshotPackage};
 use super::statistics::{DepthStats, DistributionBin};
+use crate::orderbook::book_change_event::PriceLevelChangedListener;
 use crate::orderbook::trade::{TradeListener, TradeResult};
 use crate::utils::current_time_millis;
 use crossbeam_skiplist::SkipMap;
@@ -18,7 +19,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tracing::trace;
 use uuid::Uuid;
-use crate::orderbook::book_change_event::PriceLevelChangedListener;
 
 /// Default basis points multiplier for spread calculations
 /// One basis point = 0.01% = 0.0001
@@ -69,7 +69,7 @@ pub struct OrderBook<T = ()> {
 
     /// Phantom data to maintain generic type parameter
     _phantom: PhantomData<T>,
-    
+
     /// listens to order book changes. This provides a point to update a corresponding external order book e.g. in the UI
     pub price_level_changed_listener: Option<PriceLevelChangedListener>,
 }
@@ -330,8 +330,21 @@ where
             price_level_changed_listener: None,
         }
     }
-    
-    pub fn with_trade_and_price_level_listener(symbol: &str, trade_listener: TradeListener, book_changed_listener: PriceLevelChangedListener) -> Self {
+
+    /// Creates a new order book with both a trade listener and a price level change listener.
+    ///
+    /// # Arguments
+    /// - `symbol`: The trading symbol for this order book
+    /// - `trade_listener`: Callback invoked when trades are executed
+    /// - `book_changed_listener`: Callback invoked when price levels change
+    ///
+    /// # Returns
+    /// A new `OrderBook` instance with both listeners configured
+    pub fn with_trade_and_price_level_listener(
+        symbol: &str,
+        trade_listener: TradeListener,
+        book_changed_listener: PriceLevelChangedListener,
+    ) -> Self {
         let namespace = Uuid::new_v4();
 
         Self {
@@ -365,7 +378,7 @@ where
     pub fn set_price_level_listener(&mut self, listener: PriceLevelChangedListener) {
         self.price_level_changed_listener = Some(listener);
     }
-    
+
     /// remove price level listener for this order book
     pub fn remove_price_level_listener(&mut self) {
         self.price_level_changed_listener = None;

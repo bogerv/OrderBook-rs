@@ -579,7 +579,6 @@ where
             let price_level = price_levels.get_or_insert(price, Arc::new(PriceLevel::new(price)));
             let level = price_level.value();
 
-
             // Convert to unit type for PriceLevel compatibility
             let unit_order = self.convert_to_unit_type(&order);
             let unit_order_arc = price_level.value().add_order(unit_order);

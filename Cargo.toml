@@ -74,3 +74,4 @@ sha2 = "0.10"
 tokio = { version = "1.49", features = ["sync", "rt"] }
 crossbeam-skiplist = "0.1"
 bitflags = { version = "2.10", features = ["serde"] }
+tracing-subscriber = "0.3"
